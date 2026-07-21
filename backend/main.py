@@ -1,8 +1,33 @@
 import os
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
+
 from worker import process_audio_task
+from database import Base, engine
+from limiter import limiter
+from auth.routes import router as auth_router
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="YTSaaS API")
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"], # Update in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router)
 
 @app.get("/")
 def read_root():

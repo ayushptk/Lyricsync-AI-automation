@@ -8,3 +8,9 @@ flower
 # Audio and ML processing
 basic-pitch
 git+https://github.com/m-bain/whisperx.git
+# Authentication & Security
+passlib[argon2]
+python-jose[cryptography]
+slowapi
+pydantic[email]
+python-multipart

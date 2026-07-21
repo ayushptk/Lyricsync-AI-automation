@@ -1,0 +1,98 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: ytsaas_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-ytsaas}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: ytsaas_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ytsaas_api
+    restart: always
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - db
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ytsaas_worker
+    restart: always
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - redis
+      - db
+    command: celery -A worker.celery_app worker --loglevel=info
+
+  flower:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ytsaas_flower
+    restart: always
+    environment:
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - worker
+    command: celery -A worker.celery_app flower --port=5555
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: ytsaas_frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - WATCHPACK_POLLING=true # Required for Next.js hot-reload in Windows Docker/WSL2
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:

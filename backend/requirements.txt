@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+celery
+redis
+sqlalchemy
+psycopg2-binary
+flower
+# Audio and ML processing
+basic-pitch
+git+https://github.com/m-bain/whisperx.git

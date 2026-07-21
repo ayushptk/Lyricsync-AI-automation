@@ -69,6 +69,14 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         
         metadata["vocals_file_path"] = vocals_path
         
+        # 4. Extract Melody (Basic Pitch)
+        from services.basic_pitch_extractor import MelodyExtractor
+        melody_extractor = MelodyExtractor()
+        midi_path = melody_extractor.extract_melody(vocals_path)
+        print(f"[{job_id}] Melody extraction complete. MIDI path: {midi_path}")
+        
+        metadata["midi_file_path"] = midi_path
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

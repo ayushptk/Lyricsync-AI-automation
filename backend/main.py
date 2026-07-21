@@ -9,6 +9,7 @@ from database import Base, engine
 from limiter import limiter
 from auth.routes import router as auth_router
 from routes.ingest import router as ingest_router
+from routes.melody import router as melody_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -30,6 +31,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(ingest_router)
+app.include_router(melody_router)
 
 @app.get("/")
 def read_root():

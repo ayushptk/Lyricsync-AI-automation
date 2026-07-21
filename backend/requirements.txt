@@ -14,3 +14,4 @@ python-jose[cryptography]
 slowapi
 pydantic[email]
 python-multipart
+yt-dlp

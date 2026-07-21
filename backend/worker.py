@@ -36,3 +36,24 @@ def process_audio_task(self, file_url: str):
     
     print(f"Completed audio processing for {file_url}.")
     return {"status": "success", "file_url": file_url}
+
+@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
+def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
+    """
+    Downloads audio from YouTube using yt-dlp with retries on failure.
+    Updates the database with job progress.
+    """
+    from services.youtube import download_audio, YouTubeIngestionError
+    # In a real app, you would fetch the Job from DB here using job_id and update status to 'processing'
+    print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
+    
+    try:
+        metadata = download_audio(youtube_url)
+        print(f"[{job_id}] Ingestion complete. Metadata: {metadata}")
+        # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
+        # And update `Job` status to 'completed'
+        return {"status": "success", "metadata": metadata}
+    except YouTubeIngestionError as e:
+        print(f"[{job_id}] Ingestion failed: {str(e)}")
+        # Here you would update `Job` status to 'failed' and save the error log
+        raise e

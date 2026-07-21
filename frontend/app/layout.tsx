@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "AI-powered vocal extraction and automatic lyric video generation for creators.",
 };
 
+import Providers from "./providers";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,7 +29,11 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${outfit.variable} h-full antialiased dark`}
     >
-      <body className="min-h-full flex flex-col font-sans bg-background text-foreground">{children}</body>
+      <body className="min-h-full flex flex-col font-sans bg-background text-foreground">
+        <Providers>
+          {children}
+        </Providers>
+      </body>
     </html>
   );
 }

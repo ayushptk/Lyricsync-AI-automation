@@ -30,9 +30,9 @@ export default function JobDetailsPage() {
       return {
         id: jobId,
         status: "completed", // Mock completed state for UI testing
-        video_url: `http://localhost:8000/api/video/${jobId}/download`,
-        audio_url: `http://localhost:8000/api/melody/${jobId}/audio`,
-        srt_url: `http://localhost:8000/api/transcription/${jobId}/subtitles?format=srt`,
+        video_url: `http://localhost:8000/api/v1/video/${jobId}/download`,
+        audio_url: `http://localhost:8000/api/v1/melody/${jobId}/download`,
+        srt_url: `http://localhost:8000/api/v1/transcription/${jobId}/subtitles?format=srt`,
       };
     },
     refetchInterval: (data: any) => (data?.status === "completed" || data?.status === "failed" ? false : 5000),

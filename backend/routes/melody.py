@@ -8,7 +8,7 @@ from database import get_db
 from models import User, Job
 from auth.dependencies import get_current_user
 
-router = APIRouter(prefix="/api/melody", tags=["melody"])
+router = APIRouter(prefix="/api/v1/melody", tags=["melody"])
 
 @router.get("/{job_id}/download")
 def download_midi(

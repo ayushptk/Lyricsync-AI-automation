@@ -22,7 +22,7 @@ export default function LoginPage() {
       formData.append("username", email);
       formData.append("password", password);
       
-      const response = await api.post("/api/auth/token", formData, {
+      const response = await api.post("/api/v1/auth/token", formData, {
         headers: { "Content-Type": "application/x-www-form-urlencoded" }
       });
       return response.data;
@@ -30,7 +30,7 @@ export default function LoginPage() {
     onSuccess: (data) => {
       // In a real app with HttpOnly cookies, the token is set automatically.
       // We also fetch the user profile to set in Zustand.
-      api.get("/api/auth/me", {
+      api.get("/api/v1/auth/me", {
         headers: { Authorization: `Bearer ${data.access_token}` }
       }).then((res) => {
         setUser(res.data);

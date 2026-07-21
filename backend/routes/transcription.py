@@ -8,7 +8,7 @@ from database import get_db
 from models import User, Job
 from auth.dependencies import get_current_user
 
-router = APIRouter(prefix="/api/transcription", tags=["transcription"])
+router = APIRouter(prefix="/api/v1/transcription", tags=["transcription"])
 
 @router.get("/{job_id}")
 def get_transcription(

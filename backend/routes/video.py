@@ -8,7 +8,7 @@ from database import get_db
 from models import User, Job
 from auth.dependencies import get_current_user
 
-router = APIRouter(prefix="/api/video", tags=["video"])
+router = APIRouter(prefix="/api/v1/video", tags=["video"])
 
 @router.get("/{job_id}/download")
 def download_final_video(

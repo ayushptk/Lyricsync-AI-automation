@@ -9,7 +9,7 @@ from auth.security import get_password_hash, verify_password, create_access_toke
 from auth.dependencies import get_current_user
 from limiter import limiter
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 COOKIE_SECURE = False # Set to True in production (HTTPS)
 

@@ -8,8 +8,9 @@ from models import User, Project, Job
 from auth.dependencies import get_current_user
 from worker import ingest_youtube_audio_task
 from services.youtube import validate_youtube_url
+from schemas import JobCreate
 
-router = APIRouter(prefix="/api/ingest", tags=["ingest"])
+router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
 class YouTubeIngestRequest(BaseModel):
     url: HttpUrl

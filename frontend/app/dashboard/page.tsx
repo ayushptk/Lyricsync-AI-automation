@@ -38,8 +38,8 @@ export default function DashboardPage() {
       // Since we don't have a GET /api/jobs endpoint in the backend currently, 
       // we'll mock an empty array to prevent 404s until we implement it on the backend.
       try {
-        const res = await api.get("/api/ingest/jobs");
-        return res.data as Job[];
+        const res = await api.get("/api/v1/jobs");
+        return res.data.items as Job[];
       } catch (err) {
         return [];
       }
@@ -51,7 +51,7 @@ export default function DashboardPage() {
   const ingestMutation = useMutation({
     mutationFn: async (youtubeUrl: string) => {
       // Using project_id=1 for MVP as per backend default route
-      const response = await api.post("/api/ingest/youtube?project_id=1", { url: youtubeUrl });
+      const response = await api.post("/api/v1/ingest/youtube?project_id=1", { url: youtubeUrl });
       return response.data;
     },
     onSuccess: () => {

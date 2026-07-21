@@ -77,6 +77,14 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         
         metadata["midi_file_path"] = midi_path
         
+        # 5. Render MIDI to Audio (FluidSynth)
+        from services.piano_renderer import PianoRenderer
+        renderer = PianoRenderer()
+        piano_mp3_path = renderer.render_midi_to_mp3(midi_path)
+        print(f"[{job_id}] Piano rendering complete. Audio path: {piano_mp3_path}")
+        
+        metadata["piano_audio_path"] = piano_mp3_path
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

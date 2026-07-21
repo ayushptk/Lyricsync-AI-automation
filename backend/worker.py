@@ -85,6 +85,15 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         
         metadata["piano_audio_path"] = piano_mp3_path
         
+        # 6. Transcription (WhisperX)
+        from services.transcriber import WhisperXTranscriber
+        transcriber = WhisperXTranscriber()
+        # Using the isolated vocals for much higher accuracy
+        transcription_path = transcriber.transcribe(vocals_path)
+        print(f"[{job_id}] Transcription complete. JSON path: {transcription_path}")
+        
+        metadata["transcription_file_path"] = transcription_path
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

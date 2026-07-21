@@ -108,6 +108,18 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
             "ass": ass_path
         }
         
+        # 8. Render Final Video (FFmpeg + ASS)
+        from services.video_renderer import VideoRenderer
+        video_renderer = VideoRenderer()
+        # Using the rendered piano audio and the ASS karaoke lyrics
+        final_video_path = video_renderer.render_karaoke_video(
+            audio_path=piano_mp3_path,
+            ass_path=ass_path
+        )
+        print(f"[{job_id}] Video rendering complete. MP4 path: {final_video_path}")
+        
+        metadata["final_video_path"] = final_video_path
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

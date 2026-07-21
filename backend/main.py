@@ -11,6 +11,7 @@ from auth.routes import router as auth_router
 from routes.ingest import router as ingest_router
 from routes.melody import router as melody_router
 from routes.transcription import router as transcription_router
+from routes.video import router as video_router
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -34,6 +35,7 @@ app.include_router(auth_router)
 app.include_router(ingest_router)
 app.include_router(melody_router)
 app.include_router(transcription_router)
+app.include_router(video_router)
 
 @app.get("/")
 def read_root():

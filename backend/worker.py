@@ -1,6 +1,9 @@
 import os
 import time
+from dotenv import load_dotenv
 from celery import Celery
+
+load_dotenv()
 
 # Configure Celery to use Redis as the broker and result backend
 REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
@@ -75,7 +78,6 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
             
         print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
         
-        try:
         # 1. Download raw audio
         metadata = download_audio(youtube_url)
         print(f"[{job_id}] Download complete. Metadata: {metadata}")

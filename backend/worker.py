@@ -94,6 +94,20 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         
         metadata["transcription_file_path"] = transcription_path
         
+        # 7. Generate Subtitles (SRT, LRC, ASS)
+        from services.subtitle_generator import SubtitleGenerator
+        sub_generator = SubtitleGenerator(transcription_path)
+        srt_path = sub_generator.generate_srt()
+        lrc_path = sub_generator.generate_lrc()
+        ass_path = sub_generator.generate_ass()
+        print(f"[{job_id}] Subtitle generation complete.")
+        
+        metadata["subtitles"] = {
+            "srt": srt_path,
+            "lrc": lrc_path,
+            "ass": ass_path
+        }
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

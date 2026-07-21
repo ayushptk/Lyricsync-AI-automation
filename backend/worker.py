@@ -48,8 +48,19 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
     print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
     
     try:
+        # 1. Download raw audio
         metadata = download_audio(youtube_url)
-        print(f"[{job_id}] Ingestion complete. Metadata: {metadata}")
+        print(f"[{job_id}] Download complete. Metadata: {metadata}")
+        
+        # 2. Preprocess audio (Normalize, 16kHz, Trim)
+        from services.audio_preprocess import preprocess_audio
+        preprocess_stats = preprocess_audio(metadata["file_path"])
+        print(f"[{job_id}] Preprocess complete. Stats: {preprocess_stats}")
+        
+        # Update metadata with final file path
+        metadata["preprocessed_file_path"] = preprocess_stats["final_file_path"]
+        metadata["trim_stats"] = preprocess_stats
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

@@ -61,6 +61,14 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         metadata["preprocessed_file_path"] = preprocess_stats["final_file_path"]
         metadata["trim_stats"] = preprocess_stats
         
+        # 3. Separate Vocals (Demucs)
+        from services.vocal_separator import DemucsSeparator
+        separator = DemucsSeparator()
+        vocals_path = separator.separate_vocals(metadata["preprocessed_file_path"])
+        print(f"[{job_id}] Vocal separation complete. Vocals path: {vocals_path}")
+        
+        metadata["vocals_file_path"] = vocals_path
+        
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
         # And update `Job` status to 'completed'
         return {"status": "success", "metadata": metadata}

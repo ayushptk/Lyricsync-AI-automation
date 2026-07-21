@@ -11,12 +11,26 @@ celery_app = Celery(
     backend=REDIS_URL
 )
 
+from kombu import Queue
+
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # 1. Define explicit queues
+    task_queues=(
+        Queue('default', routing_key='task.#'),
+        Queue('gpu_heavy', routing_key='gpu.#'),
+        Queue('cpu_heavy', routing_key='cpu.#'),
+        Queue('dlq', routing_key='dlq.#'), # Dead Letter Queue
+    ),
+    # 2. Route tasks to specific queues
+    task_routes={
+        'worker.ingest_youtube_audio_task': {'queue': 'gpu_heavy', 'routing_key': 'gpu.ingest'},
+        'worker.process_audio_task': {'queue': 'cpu_heavy', 'routing_key': 'cpu.process'},
+    }
 )
 
 @celery_app.task(bind=True)
@@ -44,10 +58,24 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
     Updates the database with job progress.
     """
     from services.youtube import download_audio, YouTubeIngestionError
-    # In a real app, you would fetch the Job from DB here using job_id and update status to 'processing'
-    print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
+    from database import SessionLocal
+    from models import Job
     
+    # 0. Idempotency Check
+    db = SessionLocal()
     try:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            print(f"[{job_id}] Job not found in database. Exiting.")
+            return
+            
+        if job.status == "completed":
+            print(f"[{job_id}] Job already completed. Idempotent exit.")
+            return
+            
+        print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
+        
+        try:
         # 1. Download raw audio
         metadata = download_audio(youtube_url)
         print(f"[{job_id}] Download complete. Metadata: {metadata}")
@@ -121,9 +149,30 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         metadata["final_video_path"] = final_video_path
         
         # Here you would save the metadata to `UploadedFile` and `AudioMetadata` tables
-        # And update `Job` status to 'completed'
+        job.status = "completed"
+        db.commit()
+        
         return {"status": "success", "metadata": metadata}
+        
     except YouTubeIngestionError as e:
         print(f"[{job_id}] Ingestion failed: {str(e)}")
-        # Here you would update `Job` status to 'failed' and save the error log
+        job.status = "failed"
+        db.commit()
+        
+        # If this is the last retry, route to DLQ
+        if self.request.retries == self.max_retries:
+            print(f"[{job_id}] Max retries exceeded. Sending to DLQ.")
+            celery_app.send_task('worker.dlq_handler', args=[job_id, str(e)], queue='dlq')
+            
         raise e
+    finally:
+        db.close()
+
+@celery_app.task(bind=True)
+def dlq_handler(self, job_id: str, error_msg: str):
+    """
+    Handles tasks that have completely failed and exhausted retries.
+    Logs them for manual inspection.
+    """
+    print(f"[DLQ] CRITICAL: Job {job_id} permanently failed. Error: {error_msg}")
+    # You could send an alert to Sentry or Slack here.

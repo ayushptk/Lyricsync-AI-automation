@@ -26,7 +26,7 @@ class MelodyExtractor:
         Initializes the Basic Pitch melody extractor.
         Model weights are loaded from the default ICASSP 2022 model.
         """
-        self.model_path = ICASSP_2022_MODEL_PATH
+        self.model_path = str(ICASSP_2022_MODEL_PATH) + ".onnx"
         logger.info(f"Initializing Basic Pitch extractor with model: {self.model_path}")
 
     def extract_melody(self, input_audio_path: str, output_dir: str = None) -> str:
@@ -56,6 +56,7 @@ class MelodyExtractor:
                 sonify_midi=False,
                 save_model_outputs=False,
                 save_notes=False,
+                model_or_model_path=self.model_path,
                 # Tuned thresholds for vocals
                 onset_threshold=0.6,
                 frame_threshold=0.3,

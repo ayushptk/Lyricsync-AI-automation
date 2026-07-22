@@ -1,3 +1,5 @@
+import threading
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
@@ -10,6 +12,8 @@ from worker import ingest_youtube_audio_task
 from services.youtube import validate_youtube_url
 from schemas import JobCreate
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
 from typing import Optional
@@ -18,16 +22,49 @@ class YouTubeIngestRequest(BaseModel):
     url: HttpUrl
     project_title: Optional[str] = "Untitled Project"
 
+
+def _run_ingest_in_thread(youtube_url: str, job_id: str):
+    """
+    Wrapper that runs the ingest task in a separate daemon thread.
+    This prevents the heavy pipeline from blocking FastAPI's ASGI event loop.
+    If the thread crashes, the worker's error handling ensures the job is marked as failed.
+    """
+    try:
+        logger.info(f"[Thread] Starting ingest for job {job_id}")
+        ingest_youtube_audio_task(youtube_url, job_id)
+        logger.info(f"[Thread] Ingest completed for job {job_id}")
+    except Exception as e:
+        logger.error(f"[Thread] Ingest thread crashed for job {job_id}: {str(e)}")
+        # The worker function already handles DB updates on error,
+        # but if it somehow didn't catch the error, try to update the job status here
+        try:
+            from database import SessionLocal
+            from models import Job as JobModel
+            db = SessionLocal()
+            try:
+                job = db.query(JobModel).filter(JobModel.id == job_id).first()
+                if job and job.status not in ("completed", "failed"):
+                    job.status = "failed"
+                    job.error_log = (job.error_log or "") + f"\nThread crash: {str(e)}"
+                    db.commit()
+            finally:
+                db.close()
+        except Exception as db_err:
+            logger.critical(f"[Thread] Could not update job status after crash: {db_err}")
+
+
 @router.post("/youtube")
 def ingest_youtube(
     request: YouTubeIngestRequest,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """
     Accepts a YouTube URL, validates it, creates a project/job, 
     and queues it for background audio download and metadata extraction.
+    
+    The heavy processing pipeline runs in a separate daemon thread to avoid
+    blocking FastAPI's ASGI event loop.
     """
     url_str = str(request.url)
     
@@ -58,16 +95,28 @@ def ingest_youtube(
     db.commit()
     db.refresh(job)
     
-    # 4. Asynchronously queue the task using FastAPI BackgroundTasks
-    background_tasks.add_task(ingest_youtube_audio_task, url_str, str(job.id))
+    # 4. Launch the heavy pipeline in a separate daemon thread
+    # Using a daemon thread (not BackgroundTasks) so:
+    #  - It doesn't block FastAPI's event loop
+    #  - It can run truly in parallel
+    #  - If the server restarts, daemon threads are cleaned up
+    thread = threading.Thread(
+        target=_run_ingest_in_thread,
+        args=(url_str, str(job.id)),
+        daemon=True,
+        name=f"ingest-{job.id}"
+    )
+    thread.start()
     
-    # Update job with a placeholder worker task id
-    job.worker_id = "background-task"
+    logger.info(f"Launched ingest thread for job {job.id} (thread: {thread.name})")
+    
+    # Update job with thread info
+    job.worker_id = f"thread-{thread.name}"
     db.commit()
     
     return {
         "message": "Ingestion started",
         "project_id": str(project.id),
         "job_id": str(job.id),
-        "task_id": "background-task"
+        "task_id": f"thread-{thread.name}"
     }

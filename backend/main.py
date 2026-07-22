@@ -1,8 +1,11 @@
 import os
+import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from worker import process_audio_task
-from database import Base, engine
+from database import Base, engine, SessionLocal
+from models import Job
 from auth.routes import router as auth_router
 from routes.ingest import router as ingest_router
 from routes.melody import router as melody_router
@@ -15,15 +18,53 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
+logger = logging.getLogger(__name__)
+
 # Create database tables
 Base.metadata.create_all(bind=engine)
+
+
+def _recover_stale_jobs():
+    """
+    On server startup, find any jobs stuck in 'processing' or 'queued' status.
+    These are orphaned by a previous server crash/reload and will never complete.
+    Mark them as 'failed' so the user sees a clear status instead of being stuck forever.
+    """
+    db = SessionLocal()
+    try:
+        stale_jobs = db.query(Job).filter(Job.status.in_(["processing"])).all()
+        if stale_jobs:
+            logger.warning(f"Found {len(stale_jobs)} stale job(s) from previous server run. Marking as failed.")
+            for job in stale_jobs:
+                job.status = "failed"
+                old_log = job.error_log or ""
+                job.error_log = old_log + "\n⚠ Server restarted while this job was processing. Please retry."
+                logger.info(f"  → Marked job {job.id} as failed (was stuck in 'processing')")
+            db.commit()
+        else:
+            logger.info("No stale jobs found on startup.")
+    except Exception as e:
+        logger.error(f"Failed to recover stale jobs: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app):
+    # Startup: recover orphaned jobs
+    _recover_stale_jobs()
+    yield
+    # Shutdown: nothing special needed
+
 
 app = FastAPI(
     title="LyricSync API",
     description="Internal API for LyricSync AI Video Generation SaaS.",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Global Exception Handlers

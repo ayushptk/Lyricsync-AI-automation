@@ -19,9 +19,11 @@ class UserResponse(BaseModel):
 
 # --- Project & Job Schemas ---
 class ProjectResponse(BaseModel):
-    id: int
-    name: str
+    id: uuid.UUID
+    title: str
+    status: str
     created_at: datetime
+    updated_at: datetime
     
     class Config:
         from_attributes = True
@@ -31,10 +33,14 @@ class JobCreate(BaseModel):
 
 class JobResponse(BaseModel):
     id: uuid.UUID
-    project_id: int
+    project_id: uuid.UUID
+    job_type: str
     status: str
+    progress: float
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
     created_at: datetime
-    updated_at: datetime
+    error_log: Optional[str] = None
     
     class Config:
         from_attributes = True

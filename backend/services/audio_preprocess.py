@@ -3,9 +3,12 @@ import logging
 import ffmpeg
 import librosa
 import soundfile as sf
+import imageio_ffmpeg
 from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
+ffmpeg_location = os.getenv('FFMPEG_LOCATION')
+FFMPEG_EXE = os.path.join(ffmpeg_location, 'ffmpeg.exe') if ffmpeg_location else imageio_ffmpeg.get_ffmpeg_exe()
 
 class AudioPreprocessError(Exception):
     pass
@@ -23,7 +26,7 @@ def standardize_and_normalize(input_path: str, output_path: str) -> str:
             .filter('loudnorm')
             .output(output_path, ar=16000, ac=1, format='wav')
             .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+            .run(cmd=FFMPEG_EXE, capture_stdout=True, capture_stderr=True)
         )
         return output_path
     except ffmpeg.Error as e:

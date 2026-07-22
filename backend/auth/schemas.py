@@ -9,8 +9,10 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+import uuid
+
 class UserResponse(BaseModel):
-    id: str
+    id: uuid.UUID
     email: str
     role: str
     is_verified: bool

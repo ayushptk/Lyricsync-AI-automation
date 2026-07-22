@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from pydantic import BaseModel, HttpUrl
 from sqlalchemy.orm import Session
 import uuid
@@ -12,13 +12,16 @@ from schemas import JobCreate
 
 router = APIRouter(prefix="/api/v1/ingest", tags=["ingest"])
 
+from typing import Optional
+
 class YouTubeIngestRequest(BaseModel):
     url: HttpUrl
-    project_title: str
+    project_title: Optional[str] = "Untitled Project"
 
 @router.post("/youtube")
 def ingest_youtube(
     request: YouTubeIngestRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -55,16 +58,16 @@ def ingest_youtube(
     db.commit()
     db.refresh(job)
     
-    # 4. Asynchronously queue the task
-    task = ingest_youtube_audio_task.delay(url_str, str(job.id))
+    # 4. Asynchronously queue the task using FastAPI BackgroundTasks
+    background_tasks.add_task(ingest_youtube_audio_task, url_str, str(job.id))
     
-    # Update job with celery worker task id
-    job.worker_id = task.id
+    # Update job with a placeholder worker task id
+    job.worker_id = "background-task"
     db.commit()
     
     return {
         "message": "Ingestion started",
         "project_id": str(project.id),
         "job_id": str(job.id),
-        "task_id": task.id
+        "task_id": "background-task"
     }

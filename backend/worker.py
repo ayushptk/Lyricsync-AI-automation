@@ -10,13 +10,13 @@ REDIS_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
 
 celery_app = Celery(
     "worker",
-    broker=REDIS_URL,
-    backend=REDIS_URL
+    broker=REDIS_URL
 )
 
 from kombu import Queue
 
 celery_app.conf.update(
+    task_ignore_result=True,
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
@@ -54,15 +54,25 @@ def process_audio_task(self, file_url: str):
     print(f"Completed audio processing for {file_url}.")
     return {"status": "success", "file_url": file_url}
 
-@celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
+def ingest_youtube_audio_task(youtube_url: str, job_id: str):
     """
-    Downloads audio from YouTube using yt-dlp with retries on failure.
+    Downloads audio from YouTube using yt-dlp.
     Updates the database with job progress.
     """
     from services.youtube import download_audio, YouTubeIngestionError
     from database import SessionLocal
     from models import Job
+    
+    def log_progress(db, job, msg, progress):
+        print(f"[{job.id}] {msg}")
+        if not job.error_log:
+            job.error_log = msg
+        else:
+            job.error_log += "\n" + msg
+        job.status = "processing"
+        job.progress = progress
+        db.commit()
+    
     
     # 0. Idempotency Check
     db = SessionLocal()
@@ -76,16 +86,16 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
             print(f"[{job_id}] Job already completed. Idempotent exit.")
             return
             
-        print(f"[{job_id}] Starting ingestion for URL: {youtube_url}")
+        log_progress(db, job, f"Starting ingestion for URL: {youtube_url}", 10)
         
         # 1. Download raw audio
         metadata = download_audio(youtube_url)
-        print(f"[{job_id}] Download complete. Metadata: {metadata}")
+        log_progress(db, job, "Download complete.", 25)
         
         # 2. Preprocess audio (Normalize, 16kHz, Trim)
         from services.audio_preprocess import preprocess_audio
         preprocess_stats = preprocess_audio(metadata["file_path"])
-        print(f"[{job_id}] Preprocess complete. Stats: {preprocess_stats}")
+        log_progress(db, job, "Preprocess complete.", 35)
         
         # Update metadata with final file path
         metadata["preprocessed_file_path"] = preprocess_stats["final_file_path"]
@@ -95,7 +105,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         from services.vocal_separator import DemucsSeparator
         separator = DemucsSeparator()
         vocals_path = separator.separate_vocals(metadata["preprocessed_file_path"])
-        print(f"[{job_id}] Vocal separation complete. Vocals path: {vocals_path}")
+        log_progress(db, job, "Vocal separation complete.", 50)
         
         metadata["vocals_file_path"] = vocals_path
         
@@ -103,7 +113,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         from services.basic_pitch_extractor import MelodyExtractor
         melody_extractor = MelodyExtractor()
         midi_path = melody_extractor.extract_melody(vocals_path)
-        print(f"[{job_id}] Melody extraction complete. MIDI path: {midi_path}")
+        log_progress(db, job, "Melody extraction complete.", 65)
         
         metadata["midi_file_path"] = midi_path
         
@@ -111,7 +121,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         from services.piano_renderer import PianoRenderer
         renderer = PianoRenderer()
         piano_mp3_path = renderer.render_midi_to_mp3(midi_path)
-        print(f"[{job_id}] Piano rendering complete. Audio path: {piano_mp3_path}")
+        log_progress(db, job, "Piano rendering complete.", 75)
         
         metadata["piano_audio_path"] = piano_mp3_path
         
@@ -120,7 +130,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         transcriber = WhisperXTranscriber()
         # Using the isolated vocals for much higher accuracy
         transcription_path = transcriber.transcribe(vocals_path)
-        print(f"[{job_id}] Transcription complete. JSON path: {transcription_path}")
+        log_progress(db, job, "Transcription complete.", 85)
         
         metadata["transcription_file_path"] = transcription_path
         
@@ -130,7 +140,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         srt_path = sub_generator.generate_srt()
         lrc_path = sub_generator.generate_lrc()
         ass_path = sub_generator.generate_ass()
-        print(f"[{job_id}] Subtitle generation complete.")
+        log_progress(db, job, "Subtitle generation complete.", 90)
         
         metadata["subtitles"] = {
             "srt": srt_path,
@@ -146,7 +156,7 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
             audio_path=piano_mp3_path,
             ass_path=ass_path
         )
-        print(f"[{job_id}] Video rendering complete. MP4 path: {final_video_path}")
+        log_progress(db, job, "Video rendering complete.", 100)
         
         metadata["final_video_path"] = final_video_path
         
@@ -161,12 +171,8 @@ def ingest_youtube_audio_task(self, youtube_url: str, job_id: str):
         job.status = "failed"
         db.commit()
         
-        # If this is the last retry, route to DLQ
-        if self.request.retries == self.max_retries:
-            print(f"[{job_id}] Max retries exceeded. Sending to DLQ.")
-            celery_app.send_task('worker.dlq_handler', args=[job_id, str(e)], queue='dlq')
-            
-        raise e
+        # Just raise or log the error
+        print(f"[{job_id}] Task failed.")
     finally:
         db.close()
 

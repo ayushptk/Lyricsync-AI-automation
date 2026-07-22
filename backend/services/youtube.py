@@ -4,6 +4,7 @@ import uuid
 import logging
 from typing import Dict, Any
 import yt_dlp
+import imageio_ffmpeg
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,12 @@ def download_audio(url: str, output_dir: str = "/tmp/downloads") -> Dict[str, An
         }],
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        },
+        'ffmpeg_location': os.getenv('FFMPEG_LOCATION') or imageio_ffmpeg.get_ffmpeg_exe()
     }
 
     try:

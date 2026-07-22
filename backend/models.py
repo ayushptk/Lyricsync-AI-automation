@@ -112,6 +112,7 @@ class Job(Base):
     error_log = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
     project = relationship("Project", back_populates="jobs")
     generated_video = relationship("GeneratedVideo", back_populates="job", uselist=False)

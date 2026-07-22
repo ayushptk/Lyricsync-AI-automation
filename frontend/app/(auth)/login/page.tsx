@@ -18,21 +18,13 @@ export default function LoginPage() {
 
   const loginMutation = useMutation({
     mutationFn: async () => {
-      const formData = new URLSearchParams();
-      formData.append("username", email);
-      formData.append("password", password);
-      
-      const response = await api.post("/api/v1/auth/token", formData, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" }
-      });
+      const response = await api.post("/api/v1/auth/login", { email, password });
       return response.data;
     },
-    onSuccess: (data) => {
-      // In a real app with HttpOnly cookies, the token is set automatically.
-      // We also fetch the user profile to set in Zustand.
-      api.get("/api/v1/auth/me", {
-        headers: { Authorization: `Bearer ${data.access_token}` }
-      }).then((res) => {
+    onSuccess: () => {
+      // Cookies are set automatically by the backend.
+      // We just fetch the user profile to set in Zustand.
+      api.get("/api/v1/auth/me").then((res) => {
         setUser(res.data);
         router.push("/dashboard");
       });

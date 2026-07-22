@@ -7,14 +7,12 @@ from models import User
 from auth.schemas import UserCreate, UserLogin, UserResponse
 from auth.security import get_password_hash, verify_password, create_access_token, create_refresh_token, decode_token
 from auth.dependencies import get_current_user
-from limiter import limiter
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 COOKIE_SECURE = False # Set to True in production (HTTPS)
 
 @router.post("/register", response_model=UserResponse)
-@limiter.limit("5/minute")
 def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_in.email).first()
     if user:
@@ -33,7 +31,6 @@ def register(request: Request, user_in: UserCreate, db: Session = Depends(get_db
     return new_user
 
 @router.post("/login")
-@limiter.limit("10/minute")
 def login(request: Request, response: Response, user_in: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_in.email).first()
     if not user or not verify_password(user_in.password, user.password_hash):
@@ -66,7 +63,6 @@ def login(request: Request, response: Response, user_in: UserLogin, db: Session 
     return {"message": "Login successful"}
 
 @router.post("/refresh")
-@limiter.limit("20/minute")
 def refresh_token(request: Request, response: Response, db: Session = Depends(get_db)):
     token = request.cookies.get("refresh_token")
     if not token:

@@ -1,9 +1,12 @@
 import os
 import subprocess
 import logging
+import imageio_ffmpeg
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+ffmpeg_location = os.getenv('FFMPEG_LOCATION')
+FFMPEG_EXE = os.path.join(ffmpeg_location, 'ffmpeg.exe') if ffmpeg_location else imageio_ffmpeg.get_ffmpeg_exe()
 
 class VideoRenderingError(Exception):
     pass
@@ -24,7 +27,7 @@ class VideoRenderer:
         """
         try:
             result = subprocess.run(
-                ["ffmpeg", "-encoders"],
+                [FFMPEG_EXE, "-encoders"],
                 capture_output=True, text=True, check=True
             )
             return "h264_nvenc" in result.stdout
@@ -65,7 +68,7 @@ class VideoRenderer:
         logger.info(f"Starting video rendering to {output_mp4_path}")
 
         ffmpeg_cmd = [
-            "ffmpeg",
+            FFMPEG_EXE,
             "-y", # Overwrite
         ]
 

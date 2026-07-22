@@ -1,18 +1,15 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
-
 from worker import process_audio_task
 from database import Base, engine
-from limiter import limiter
 from auth.routes import router as auth_router
 from routes.ingest import router as ingest_router
 from routes.melody import router as melody_router
 from routes.transcription import router as transcription_router
 from routes.video import router as video_router
 from routes.jobs import router as jobs_router
+from routes.projects import router as projects_router
 
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -46,8 +43,8 @@ async def sqlalchemy_exception_handler(request, exc):
 
 # CORS configuration
 # Rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# app.state.limiter = limiter
+# app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS
 app.add_middleware(
@@ -64,6 +61,7 @@ app.include_router(melody_router)
 app.include_router(transcription_router)
 app.include_router(video_router)
 app.include_router(jobs_router)
+app.include_router(projects_router)
 
 @app.get("/")
 def read_root():

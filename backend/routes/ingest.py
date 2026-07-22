@@ -34,7 +34,9 @@ def _run_ingest_in_thread(youtube_url: str, job_id: str):
         ingest_youtube_audio_task(youtube_url, job_id)
         logger.info(f"[Thread] Ingest completed for job {job_id}")
     except Exception as e:
-        logger.error(f"[Thread] Ingest thread crashed for job {job_id}: {str(e)}")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"[Thread] Ingest thread crashed for job {job_id}: {str(e)}\n{tb}")
         # The worker function already handles DB updates on error,
         # but if it somehow didn't catch the error, try to update the job status here
         try:
@@ -45,7 +47,7 @@ def _run_ingest_in_thread(youtube_url: str, job_id: str):
                 job = db.query(JobModel).filter(JobModel.id == job_id).first()
                 if job and job.status not in ("completed", "failed"):
                     job.status = "failed"
-                    job.error_log = (job.error_log or "") + f"\nThread crash: {str(e)}"
+                    job.error_log = (job.error_log or "") + f"\n\n⚠ ERROR: Thread crash: {str(e)}\n\nTraceback Details:\n{tb}"
                     db.commit()
             finally:
                 db.close()

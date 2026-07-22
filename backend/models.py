@@ -114,6 +114,16 @@ class Job(Base):
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # Output file paths (populated by the worker pipeline)
+    midi_file_path = Column(String, nullable=True)
+    piano_audio_path = Column(String, nullable=True)
+    vocals_file_path = Column(String, nullable=True)
+    transcription_file_path = Column(String, nullable=True)
+    srt_file_path = Column(String, nullable=True)
+    lrc_file_path = Column(String, nullable=True)
+    ass_file_path = Column(String, nullable=True)
+    final_video_path = Column(String, nullable=True)
+
     project = relationship("Project", back_populates="jobs")
     generated_video = relationship("GeneratedVideo", back_populates="job", uselist=False)
 

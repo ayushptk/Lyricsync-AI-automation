@@ -31,16 +31,13 @@ def download_midi(
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
         
-    # In a fully implemented app, the MIDI file path would be retrieved from `UploadedFile` or `AudioMetadata` tables.
-    # For now, we simulate the path based on how our worker names it
-    # Assuming `file_id` is somehow tracked. This is placeholder logic:
-    # midi_path = "/tmp/downloads/some_id_vocals_basic_pitch.mid"
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Database integration for file path retrieval is pending")
-    
-    # if not os.path.exists(midi_path):
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MIDI file not found on disk")
+    if not job.midi_file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MIDI file was not generated for this job (melody extraction may have been skipped)")
+
+    if not os.path.exists(job.midi_file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MIDI file not found on disk")
         
-    # return FileResponse(path=midi_path, media_type="audio/midi", filename="vocals_melody.mid")
+    return FileResponse(path=job.midi_file_path, media_type="audio/midi", filename="vocals_melody.mid")
 
 @router.get("/{job_id}/audio")
 def download_piano_audio(
@@ -62,10 +59,10 @@ def download_piano_audio(
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
         
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Database integration for file path retrieval is pending")
-    
-    # mp3_path = "/tmp/downloads/some_id_vocals_basic_pitch_piano.mp3"
-    # if not os.path.exists(mp3_path):
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
+    if not job.piano_audio_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Piano audio was not generated for this job")
+
+    if not os.path.exists(job.piano_audio_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio file not found on disk")
         
-    # return FileResponse(path=mp3_path, media_type="audio/mpeg", filename="piano_melody.mp3")
+    return FileResponse(path=job.piano_audio_path, media_type="audio/mpeg", filename="piano_melody.mp3")

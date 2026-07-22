@@ -272,11 +272,14 @@ export default function DashboardPage() {
                               progress={job.progress} 
                               className={job.status === "failed" ? "opacity-50 grayscale" : "bg-white/5 [&>div]:bg-gradient-to-r [&>div]:from-indigo-500 [&>div]:to-purple-500"} 
                             />
-                            {job.error_log && (
-                              <div className="mt-2 text-[10px] text-slate-400 font-mono leading-tight max-h-16 overflow-y-auto bg-black/20 p-2 rounded border border-white/5 scrollbar-thin scrollbar-thumb-white/10">
-                                {job.error_log.split('\n').map((line, i) => (
-                                  <div key={i}>{line}</div>
-                                ))}
+                            {job.status === "failed" && job.error_log && (
+                              <div className="mt-2 text-[11px] bg-red-950/30 border border-red-900/40 text-red-300 p-2 rounded flex items-center justify-between gap-2">
+                                <span className="truncate font-mono">
+                                  {job.error_log.split("\n").find(l => l.includes("ERROR:")) || job.error_log.split("\n")[0]}
+                                </span>
+                                <span className="text-[10px] text-red-400 font-medium shrink-0 group-hover:underline">
+                                  View Details & Trace &rarr;
+                                </span>
                               </div>
                             )}
                           </div>

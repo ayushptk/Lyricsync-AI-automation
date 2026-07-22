@@ -1,6 +1,7 @@
 import os
 import json
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import uuid
 
@@ -30,16 +31,16 @@ def get_transcription(
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
         
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Database integration for file path retrieval is pending")
-    
-    # json_path = "/tmp/downloads/some_id_vocals_transcription.json"
-    # if not os.path.exists(json_path):
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription file not found on disk")
+    if not job.transcription_file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription was not generated for this job")
+
+    if not os.path.exists(job.transcription_file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transcription file not found on disk")
         
-    # with open(json_path, 'r', encoding='utf-8') as f:
-    #     data = json.load(f)
+    with open(job.transcription_file_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
         
-    # return data
+    return data
 
 @router.get("/{job_id}/subtitles")
 def download_subtitles(
@@ -65,17 +66,19 @@ def download_subtitles(
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
         
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Database integration for file path retrieval is pending")
+    # Map format to the corresponding Job column
+    format_path_map = {
+        "srt": job.srt_file_path,
+        "lrc": job.lrc_file_path,
+        "ass": job.ass_file_path,
+    }
     
-    # file_path = f"/tmp/downloads/some_id_vocals_transcription.{format}"
-    # if not os.path.exists(file_path):
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{format.upper()} file not found on disk")
+    file_path = format_path_map.get(format)
+    
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{format.upper()} file was not generated for this job")
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"{format.upper()} file not found on disk")
         
-    # media_types = {
-    #     "srt": "text/plain",
-    #     "lrc": "text/plain",
-    #     "ass": "text/plain"
-    # }
-    
-    # from fastapi.responses import FileResponse
-    # return FileResponse(path=file_path, media_type=media_types[format], filename=f"vocals_subtitles.{format}")
+    return FileResponse(path=file_path, media_type="text/plain", filename=f"vocals_subtitles.{format}")

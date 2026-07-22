@@ -30,10 +30,10 @@ def download_final_video(
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
         
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Database integration for file path retrieval is pending")
-    
-    # mp4_path = "/tmp/downloads/some_id_karaoke.mp4"
-    # if not os.path.exists(mp4_path):
-    #     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
+    if not job.final_video_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video was not generated for this job (rendering may have been skipped)")
+
+    if not os.path.exists(job.final_video_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Video file not found on disk")
         
-    # return FileResponse(path=mp4_path, media_type="video/mp4", filename="karaoke_final.mp4")
+    return FileResponse(path=job.final_video_path, media_type="video/mp4", filename="karaoke_final.mp4")

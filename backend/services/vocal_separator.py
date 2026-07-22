@@ -120,8 +120,8 @@ class DemucsSeparator:
                     shifts=1,
                     split=True,
                     overlap=0.25,
-                    progress=True,  # Enable progress logging
-                    segment=None,   # Let Demucs auto-decide segment size
+                    progress=False,  # Suppress per-model tqdm bars (mdx_extra has 4 sub-models, each shows its own bar)
+                    segment=None,    # Let Demucs auto-decide segment size
                 )[0]
             
             logger.info("Demucs model applied successfully.")

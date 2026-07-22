@@ -120,10 +120,11 @@ def _safe_update_job(db, job, status=None, progress=None, log_msg=None, error_ms
             else:
                 job.error_log += "\n" + log_msg
         if error_msg:
+            formatted_err = error_msg if error_msg.startswith("⚠ ERROR:") else f"⚠ ERROR: {error_msg}"
             if not job.error_log:
-                job.error_log = error_msg
+                job.error_log = formatted_err
             else:
-                job.error_log += "\n⚠ ERROR: " + error_msg
+                job.error_log += "\n\n" + formatted_err
         db.commit()
         logger.info(f"[{job.id}] Status={job.status} Progress={job.progress}% | {log_msg or error_msg or ''}")
     except Exception as commit_err:
@@ -136,7 +137,8 @@ def _safe_update_job(db, job, status=None, progress=None, log_msg=None, error_ms
             if progress is not None:
                 job.progress = progress
             if log_msg or error_msg:
-                job.error_log = (log_msg or "") + ("\n⚠ ERROR: " + error_msg if error_msg else "")
+                formatted_err = error_msg if (error_msg and error_msg.startswith("⚠ ERROR:")) else (f"⚠ ERROR: {error_msg}" if error_msg else "")
+                job.error_log = (log_msg or "") + ("\n\n" + formatted_err if formatted_err else "")
             db.commit()
         except Exception as rollback_err:
             logger.critical(f"[{job.id}] CRITICAL: Could not update job status even after rollback: {rollback_err}")
@@ -148,50 +150,35 @@ def process_audio_task(self, file_url: str):
     Sample Celery task that represents processing an audio file.
     In a real scenario, this would use WhisperX and Basic Pitch.
     """
-    print(f"Starting audio processing for {file_url}...")
-    
-    # Simulate processing time
-    time.sleep(5)
-    
-    # Normally you would do something like:
-    # import whisperx
-    # from basic_pitch.inference import predict_and_save
-    
-    print(f"Completed audio processing for {file_url}.")
-    return {"status": "success", "file_url": file_url}
+    pass
 
 
 def ingest_youtube_audio_task(youtube_url: str, job_id: str):
     """
-    Downloads audio from YouTube using yt-dlp.
-    Updates the database with job progress.
-    Each pipeline step is wrapped with timeout protection and graceful error handling.
+    Pipeline orchestrator that downloads audio, preprocesses it, runs Demucs, Basic Pitch,
+    WhisperX, subtitle creation, and FFmpeg video rendering.
+    Updates the Job database record with fine-grained status and progress at each step.
     """
     from database import SessionLocal
-    from models import Job
+    from models import Job as JobModel
+    
+    start_time = time.time()
     
     db = SessionLocal()
     job = None
-    
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
+        job = db.query(JobModel).filter(JobModel.id == job_id).first()
         if not job:
-            logger.error(f"[{job_id}] Job not found in database. Exiting.")
+            logger.error(f"[{job_id}] Job record not found in DB.")
             return
             
-        if job.status == "completed":
-            logger.info(f"[{job_id}] Job already completed. Idempotent exit.")
-            return
-        
-        metadata = {}
-        start_time = time.time()
-        
         _safe_update_job(db, job, status="processing", progress=5,
                          log_msg=f"Starting ingestion for URL: {youtube_url}")
         
         # =====================================================================
         # STEP 1: Download raw audio from YouTube
         # =====================================================================
+        metadata = {}
         try:
             from services.youtube import download_audio, YouTubeIngestionError
             
@@ -209,8 +196,12 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                              error_msg=f"Download timed out: {str(e)}")
             return
         except Exception as e:
+            tb = traceback.format_exc()
+            err_text = f"Download failed: {str(e)}"
+            if tb and "Traceback Details:" not in str(e):
+                err_text += f"\n\nTraceback Details:\n{tb}"
             _safe_update_job(db, job, status="failed", progress=15,
-                             error_msg=f"Download failed: {str(e)}")
+                             error_msg=err_text)
             return  # Can't continue without the audio file
         
         # =====================================================================
@@ -234,9 +225,13 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                              error_msg=f"Preprocess timed out: {str(e)}")
             return
         except Exception as e:
+            tb = traceback.format_exc()
+            err_text = f"Preprocess failed: {str(e)}"
+            if tb and "Traceback Details:" not in str(e):
+                err_text += f"\n\nTraceback Details:\n{tb}"
             _safe_update_job(db, job, status="failed", progress=25,
-                             error_msg=f"Preprocess failed: {str(e)}")
-            return  # Can't continue without preprocessed audio
+                             error_msg=err_text)
+            return  # Can't continue without preprocessed audio audio
         
         # =====================================================================
         # STEP 3: Separate Vocals (Demucs) — GRACEFUL FALLBACK
@@ -259,6 +254,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 step_name="Vocal Separation (Demucs)"
             )
             metadata["vocals_file_path"] = vocals_path
+            job.vocals_file_path = vocals_path
             _safe_update_job(db, job, progress=50,
                              log_msg="Vocal separation complete.")
             
@@ -287,6 +283,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 step_name="Melody Extraction"
             )
             metadata["midi_file_path"] = midi_path
+            job.midi_file_path = midi_path
             _safe_update_job(db, job, progress=60,
                              log_msg="Melody extraction complete.")
         except Exception as e:
@@ -314,6 +311,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                     step_name="Piano Rendering"
                 )
                 metadata["piano_audio_path"] = piano_mp3_path
+                job.piano_audio_path = piano_mp3_path
                 _safe_update_job(db, job, progress=70,
                                  log_msg="Piano rendering complete.")
             except Exception as e:
@@ -345,6 +343,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 step_name="Transcription (WhisperX)"
             )
             metadata["transcription_file_path"] = transcription_path
+            job.transcription_file_path = transcription_path
             _safe_update_job(db, job, progress=80,
                              log_msg="Transcription complete.")
             
@@ -364,6 +363,9 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                     "lrc": lrc_path,
                     "ass": ass_path
                 }
+                job.srt_file_path = srt_path
+                job.lrc_file_path = lrc_path
+                job.ass_file_path = ass_path
                 _safe_update_job(db, job, progress=85,
                                  log_msg="Subtitle generation complete.")
             except Exception as e:
@@ -400,6 +402,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                     step_name="Video Rendering"
                 )
                 metadata["final_video_path"] = final_video_path
+                job.final_video_path = final_video_path
                 _safe_update_job(db, job, progress=100,
                                  log_msg="Video rendering complete.")
             except Exception as e:

@@ -54,7 +54,7 @@ celery_app.conf.update(
 STEP_TIMEOUTS = {
     "download": 300,          # 5 minutes for YouTube download
     "preprocess": 300,        # 5 minutes for FFmpeg normalization + trim
-    "vocal_separation": 1800, # 30 minutes for Demucs (CPU is very slow)
+    "vocal_separation": 180,  # 3 minutes max (fast FFmpeg mode takes ~5s, balanced htdemucs ~3-8min)
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
     "transcription": 900,     # 15 minutes for WhisperX
@@ -66,6 +66,42 @@ STEP_TIMEOUTS = {
 class StepTimeoutError(Exception):
     """Raised when a pipeline step exceeds its timeout."""
     pass
+
+
+def _start_progress_heartbeat(db, job, start_progress, end_progress, interval_seconds=30, total_expected_seconds=300):
+    """
+    Starts a background thread that gradually increments job progress from
+    start_progress toward end_progress while a long-running step executes.
+    Returns a threading.Event that should be set to stop the heartbeat.
+    """
+    stop_event = threading.Event()
+    
+    def _heartbeat():
+        elapsed = 0
+        while not stop_event.is_set():
+            stop_event.wait(timeout=interval_seconds)
+            if stop_event.is_set():
+                break
+            elapsed += interval_seconds
+            # Calculate progress: ease toward end_progress but never reach it
+            # Use a curve that slows down as it approaches the target
+            fraction = min(elapsed / total_expected_seconds, 0.95)
+            current = start_progress + (end_progress - start_progress) * fraction
+            current = min(current, end_progress - 1)  # Never exceed end_progress-1
+            try:
+                job.progress = round(current, 1)
+                db.commit()
+                logger.info(f"[{job.id}] Heartbeat: progress={job.progress}% (step still running...)")
+            except Exception as e:
+                logger.warning(f"[{job.id}] Heartbeat DB update failed: {e}")
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+    
+    heartbeat_thread = threading.Thread(target=_heartbeat, daemon=True, name=f"heartbeat-{job.id}")
+    heartbeat_thread.start()
+    return stop_event
 
 
 def run_with_timeout(func, args=(), kwargs=None, timeout_seconds=300, step_name="step"):
@@ -237,21 +273,32 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
         # STEP 3: Separate Vocals (Demucs) — GRACEFUL FALLBACK
         # =====================================================================
         vocals_path = metadata["preprocessed_file_path"]  # Fallback: use preprocessed audio
+        heartbeat_stop = None
         try:
             from services.vocal_separator import DemucsSeparator, DemucsSeparationError
             
-            logger.info(f"[{job_id}] Step 3/8: Separating vocals with Demucs (this may take a while on CPU)...")
+            logger.info(f"[{job_id}] Step 3/8: Separating vocals (fast mode)...")
             _safe_update_job(db, job, progress=30,
-                             log_msg="Starting vocal separation (Demucs)... This step is CPU-intensive.")
+                             log_msg="Starting vocal separation (fast FFmpeg mode)...")
             
-            def _run_demucs(input_path):
-                separator = DemucsSeparator()
+            # Start progress heartbeat: gradually move from 30% → 49%
+            # With fast mode this completes in seconds, but keep heartbeat for balanced mode fallback
+            heartbeat_stop = _start_progress_heartbeat(
+                db, job,
+                start_progress=30,
+                end_progress=50,
+                interval_seconds=10,
+                total_expected_seconds=60  # Much shorter expected time
+            )
+            
+            def _run_vocal_separation(input_path):
+                separator = DemucsSeparator()  # Uses VOCAL_SEPARATION_STRATEGY env var (default: "fast")
                 return separator.separate_vocals(input_path)
             
             vocals_path = run_with_timeout(
-                _run_demucs, args=(metadata["preprocessed_file_path"],),
+                _run_vocal_separation, args=(metadata["preprocessed_file_path"],),
                 timeout_seconds=STEP_TIMEOUTS["vocal_separation"],
-                step_name="Vocal Separation (Demucs)"
+                step_name="Vocal Separation"
             )
             metadata["vocals_file_path"] = vocals_path
             job.vocals_file_path = vocals_path
@@ -264,6 +311,10 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             _safe_update_job(db, job, progress=50,
                              log_msg=f"Vocal separation {error_type} ({type(e).__name__}). Using original audio as fallback.")
             metadata["vocals_file_path"] = vocals_path  # Use preprocessed audio
+        finally:
+            # Always stop the heartbeat thread
+            if heartbeat_stop is not None:
+                heartbeat_stop.set()
         
         # =====================================================================
         # STEP 4: Extract Melody (Basic Pitch) — OPTIONAL

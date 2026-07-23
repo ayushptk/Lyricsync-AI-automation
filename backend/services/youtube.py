@@ -4,16 +4,33 @@ import sys
 import uuid
 import tempfile
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, Any
+from contextlib import contextmanager
 import yt_dlp
 import imageio_ffmpeg
-import subprocess
 
-# Patch subprocess.Popen to avoid Errno 22 on Windows in Uvicorn daemon threads
+
+# --- Scoped subprocess patch for yt-dlp only ---
+# On Windows, yt-dlp's FFmpeg postprocessor can fail with Errno 22 (invalid argument)
+# when running inside Uvicorn daemon threads because stdin/stdout/stderr handles are
+# invalid. We patch subprocess.Popen ONLY during yt-dlp calls to avoid breaking
+# other subprocess users like Demucs, librosa, etc.
 _original_popen = subprocess.Popen
-def _patched_popen(*args, **kwargs):
-    if sys.platform == 'win32':
+
+@contextmanager
+def _scoped_windows_subprocess_patch():
+    """
+    Context manager that temporarily patches subprocess.Popen with Windows-safe
+    defaults (DEVNULL handles + CREATE_NO_WINDOW) to prevent Errno 22 in daemon threads.
+    Restores the original Popen when the context exits.
+    """
+    if sys.platform != 'win32':
+        yield
+        return
+
+    def _patched_popen(*args, **kwargs):
         if kwargs.get('stdin') is None:
             kwargs['stdin'] = subprocess.DEVNULL
         if kwargs.get('stdout') is None:
@@ -21,8 +38,13 @@ def _patched_popen(*args, **kwargs):
         if kwargs.get('stderr') is None:
             kwargs['stderr'] = subprocess.DEVNULL
         kwargs['creationflags'] = kwargs.get('creationflags', 0) | subprocess.CREATE_NO_WINDOW
-    return _original_popen(*args, **kwargs)
-subprocess.Popen = _patched_popen
+        return _original_popen(*args, **kwargs)
+
+    subprocess.Popen = _patched_popen
+    try:
+        yield
+    finally:
+        subprocess.Popen = _original_popen
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +78,15 @@ def download_audio(url: str, output_dir: str = None) -> Dict[str, Any]:
 
     # Ensure output directory exists securely (use Path for cross-platform safety)
     out_path = Path(output_dir)
+    logger.debug(f"DEBUG FS: Creating directory {out_path} (exists={out_path.exists()})")
     out_path.mkdir(parents=True, exist_ok=True)
+    logger.debug(f"DEBUG FS: Directory {out_path} created (exists={out_path.exists()}, is_dir={out_path.is_dir()})")
     
     # Generate a safe, random filename (prevent path traversal)
     file_id = str(uuid.uuid4())
     # Use standard path string conversion; .as_posix() can cause Errno 22 on Windows if interpreted as a dictionary type by yt-dlp
     output_template = str(out_path / f"{file_id}.%(ext)s")
+    logger.debug(f"DEBUG FS: Generated output template {output_template}")
 
     # Resolve ffmpeg location
     ffmpeg_loc = os.getenv('FFMPEG_LOCATION')
@@ -94,7 +119,7 @@ def download_audio(url: str, output_dir: str = None) -> Dict[str, Any]:
         ydl_opts['ffmpeg_location'] = ffmpeg_loc
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with _scoped_windows_subprocess_patch(), yt_dlp.YoutubeDL(ydl_opts) as ydl:
             logger.info(f"Extracting metadata and downloading for {url}...")
             logger.info(f"Output directory: {out_path} (exists={out_path.exists()})")
             info = ydl.extract_info(url, download=True)
@@ -103,16 +128,20 @@ def download_audio(url: str, output_dir: str = None) -> Dict[str, Any]:
             expected_file_path = str(out_path / f"{file_id}.mp3")
             
             # Verify the file was actually created
+            logger.debug(f"DEBUG FS: Checking if expected file {expected_file_path} exists")
             if not Path(expected_file_path).exists():
+                logger.debug(f"DEBUG FS: {expected_file_path} does not exist. Checking for other extensions.")
                 # Sometimes yt-dlp keeps the original extension; search for the file
                 candidates = list(out_path.glob(f"{file_id}.*"))
                 if candidates:
                     expected_file_path = str(candidates[0])
                     logger.warning(f"Expected .mp3 not found, using: {expected_file_path}")
                 else:
+                    logger.error(f"DEBUG FS: No files found for {file_id}.* in {out_path}")
                     raise YouTubeIngestionError(
                         f"Download appeared to succeed but no output file found in {out_path}"
                     )
+            logger.debug(f"DEBUG FS: File {expected_file_path} verified (exists={Path(expected_file_path).exists()}, is_file={Path(expected_file_path).is_file()})")
             
             metadata = {
                 "title": info.get("title", "Unknown Title"),
@@ -128,6 +157,7 @@ def download_audio(url: str, output_dir: str = None) -> Dict[str, Any]:
         import traceback
         tb = traceback.format_exc()
         logger.error(f"Download failed for {url}: {str(e)}\n{tb}")
+        # Append traceback directly to error message without prefixing it strangely
         raise YouTubeIngestionError(f"Failed to download video: {str(e)}\n\nTraceback Details:\n{tb}")
     except YouTubeIngestionError:
         raise
@@ -135,4 +165,5 @@ def download_audio(url: str, output_dir: str = None) -> Dict[str, Any]:
         import traceback
         tb = traceback.format_exc()
         logger.exception(f"Unexpected error during ingestion of {url}")
+        # DO NOT SWALLOW the actual traceback. Raise it clearly.
         raise YouTubeIngestionError(f"Unexpected error: Unable to download video: {str(e)}\n\nTraceback Details:\n{tb}")

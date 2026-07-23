@@ -18,6 +18,31 @@ export default function JobDetailsPage() {
   const jobId = params.id as string;
   const [copied, setCopied] = useState(false);
 
+  // Map progress percentage to current pipeline step
+  const getStepLabel = (progress: number): string => {
+    if (progress < 15) return "Step 1/8 — Downloading Audio";
+    if (progress < 25) return "Step 2/8 — Preprocessing Audio";
+    if (progress < 50) return "Step 3/8 — Separating Vocals (Demucs)";
+    if (progress < 60) return "Step 4/8 — Extracting Melody";
+    if (progress < 70) return "Step 5/8 — Rendering Piano Audio";
+    if (progress < 80) return "Step 6/8 — Transcribing with WhisperX";
+    if (progress < 85) return "Step 7/8 — Generating Subtitles";
+    if (progress < 100) return "Step 8/8 — Rendering Final Video";
+    return "Complete";
+  };
+
+  const getStepDescription = (progress: number): string => {
+    if (progress < 15) return "Fetching audio stream from YouTube...";
+    if (progress < 25) return "Normalizing volume, converting to 16kHz WAV, trimming silence...";
+    if (progress < 50) return "Running Demucs AI model to isolate vocals. This step is CPU-intensive and may take several minutes...";
+    if (progress < 60) return "Using Basic Pitch to convert vocals to MIDI notes...";
+    if (progress < 70) return "Rendering MIDI to piano audio with FluidSynth...";
+    if (progress < 80) return "Running WhisperX for word-level transcription...";
+    if (progress < 85) return "Creating SRT, LRC, and ASS subtitle files...";
+    if (progress < 100) return "Compositing final karaoke video with FFmpeg...";
+    return "Processing complete!";
+  };
+
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
       router.push("/login");
@@ -174,9 +199,9 @@ export default function JobDetailsPage() {
               <CardTitle>Processing Video...</CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
-              <ProgressBar progress={job?.progress ?? 0} label="Running AI Pipeline" />
+              <ProgressBar progress={job?.progress ?? 0} label={getStepLabel(job?.progress ?? 0)} />
               <p className="text-center text-sm text-slate-500 mt-6">
-                Separating vocals, extracting MIDI, rendering piano, generating subtitles...
+                {getStepDescription(job?.progress ?? 0)}
               </p>
             </CardContent>
           </Card>

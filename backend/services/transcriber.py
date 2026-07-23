@@ -2,100 +2,162 @@ import os
 import gc
 import json
 import logging
-from typing import Dict, Any
+import threading
+from typing import Optional
 import torch
-import whisperx
+from faster_whisper import WhisperModel
 
 logger = logging.getLogger(__name__)
 
 class TranscriptionError(Exception):
     pass
 
-class WhisperXTranscriber:
-    def __init__(self, model_size: str = "large-v2"):
+class FasterWhisperTranscriber:
+    def __init__(self):
         """
-        Initializes the WhisperX Transcriber.
+        Initializes the Faster-Whisper Transcriber.
+
+        Model selection is automatic based on hardware:
+          - GPU  -> large-v3  (fast and accurate)
+          - CPU  -> base      (tolerable speed on CPU; tiny is fastest)
+
+        Override with env var WHISPER_MODEL_SIZE.
         """
-        self.model_size = model_size
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        # compute_type float16 requires GPU, fallback to int8 for CPU
-        self.compute_type = "float16" if self.device == "cuda" else "int8"
-        
-        # We need HF_TOKEN for pyannote diarization
-        self.hf_token = os.getenv("HF_TOKEN")
-        
-        logger.info(f"Initializing WhisperX ({model_size}) on {self.device} with compute type {self.compute_type}")
+        self.is_gpu = self.device == "cuda"
+
+        # Pick a sensible default for the hardware
+        default_model = "large-v3" if self.is_gpu else "base"
+        self.model_size = os.getenv("WHISPER_MODEL_SIZE", default_model)
+
+        # float16 needs CUDA; int8 is the fastest option on CPU
+        self.compute_type = "float16" if self.is_gpu else "int8"
+
+        # Persistent download cache so models are only downloaded once
+        self._cache_dir = os.path.join(
+            os.path.dirname(__file__), "..", ".whisperx_cache"
+        )
+        os.makedirs(self._cache_dir, exist_ok=True)
+
+        logger.info(
+            f"FasterWhisperTranscriber ready | model={self.model_size} "
+            f"device={self.device} compute_type={self.compute_type}"
+        )
 
     def _flush_memory(self):
-        """Forces garbage collection and clears CUDA cache between heavy model loads."""
+        """Forces GC and clears CUDA cache between heavy model loads."""
         gc.collect()
-        if self.device == "cuda":
+        if self.is_gpu:
             torch.cuda.empty_cache()
 
-    def transcribe(self, audio_path: str, output_dir: str = None) -> str:
+    def _run_phase(self, func, phase_name: str, timeout_seconds: int):
         """
-        Transcribes audio, forces alignment, and performs speaker diarization.
-        Returns the path to the saved JSON transcription.
+        Runs `func` in a daemon thread with a hard timeout.
+        Raises TranscriptionError if it exceeds `timeout_seconds`.
+        """
+        result: list = [None]
+        exc: list = [None]
+
+        def _target():
+            try:
+                result[0] = func()
+            except Exception as e:
+                exc[0] = e
+
+        t = threading.Thread(target=_target, daemon=True, name=f"fasterwhisper-{phase_name}")
+        t.start()
+        t.join(timeout=timeout_seconds)
+
+        if t.is_alive():
+            raise TranscriptionError(
+                f"Faster-Whisper phase '{phase_name}' timed out after {timeout_seconds}s. "
+                f"Consider setting WHISPER_MODEL_SIZE=tiny in .env for faster CPU processing."
+            )
+        if exc[0] is not None:
+            raise exc[0]
+        return result[0]
+
+    def transcribe(self, audio_path: str, output_dir: Optional[str] = None) -> str:
+        """
+        Runs the Faster-Whisper transcription.
+        Returns the path to the saved JSON transcription file in WhisperX format.
         """
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
-            
+
         if output_dir is None:
             output_dir = os.path.dirname(audio_path)
-            
-        filename = os.path.basename(audio_path)
-        name, _ = os.path.splitext(filename)
+
+        name = os.path.splitext(os.path.basename(audio_path))[0]
         json_output_path = os.path.join(output_dir, f"{name}_transcription.json")
-        
-        logger.info(f"Starting WhisperX pipeline for {audio_path}")
-        
+
+        # Per-phase timeouts — CPU needs much more time than GPU
+        ph = {
+            "transcription": 600 if self.is_gpu else 1800,   # 10 min GPU / 30 min CPU
+        }
+
+        logger.info(f"Faster-Whisper pipeline starting | file={audio_path}")
+
         try:
-            # Load audio
-            audio = whisperx.load_audio(audio_path)
-            
-            # --- Phase 1: Transcription ---
-            logger.info("Phase 1: Transcription...")
-            model = whisperx.load_model(self.model_size, self.device, compute_type=self.compute_type)
-            # Use batch_size=16 for speed if on GPU, otherwise lower for CPU
-            batch_size = 16 if self.device == "cuda" else 4
-            result = model.transcribe(audio, batch_size=batch_size)
-            
-            # Flush Whisper model from VRAM
-            del model
+            logger.info(
+                f"Faster-Whisper Transcription "
+                f"(model={self.model_size} device={self.device})..."
+            )
+
+            def _transcribe():
+                model = WhisperModel(
+                    self.model_size,
+                    device=self.device,
+                    compute_type=self.compute_type,
+                    download_root=self._cache_dir
+                )
+                
+                # word_timestamps=True is necessary for karaoke
+                segments, info = model.transcribe(audio_path, word_timestamps=True)
+                
+                # Need to consume the generator to actually process
+                segments_data = []
+                for segment in segments:
+                    words_data = []
+                    if segment.words:
+                        for word in segment.words:
+                            words_data.append({
+                                "word": word.word,
+                                "start": word.start,
+                                "end": word.end,
+                                "probability": word.probability
+                            })
+                    
+                    segments_data.append({
+                        "start": segment.start,
+                        "end": segment.end,
+                        "text": segment.text,
+                        "words": words_data
+                    })
+                
+                del model
+                return {
+                    "language": info.language,
+                    "segments": segments_data
+                }
+
+            result = self._run_phase(_transcribe, "transcription", ph["transcription"])
             self._flush_memory()
             
-            # --- Phase 2: Alignment ---
-            logger.info("Phase 2: Word-Level Alignment...")
-            language_code = result["language"]
-            align_model, align_metadata = whisperx.load_align_model(language_code=language_code, device=self.device)
-            result = whisperx.align(result["segments"], align_model, align_metadata, audio, self.device, return_char_alignments=False)
-            
-            # Flush Alignment model from VRAM
-            del align_model
-            self._flush_memory()
-            
-            # --- Phase 3: Diarization (Optional but recommended) ---
-            if self.hf_token:
-                logger.info("Phase 3: Speaker Diarization...")
-                diarize_model = whisperx.DiarizationPipeline(use_auth_token=self.hf_token, device=self.device)
-                diarize_segments = diarize_model(audio)
-                result = whisperx.assign_word_speakers(diarize_segments, result)
-                
-                # Flush Diarization model
-                del diarize_model
-                self._flush_memory()
-            else:
-                logger.warning("Skipping Diarization Phase: HF_TOKEN not found in environment variables.")
-                
-            # Save results
-            logger.info(f"Saving transcription to {json_output_path}")
+            logger.info(f"Faster-Whisper done | detected language={result.get('language')}")
+
+            # ---- Save result ----
+            logger.info(f"Faster-Whisper — saving transcription to {json_output_path}")
             with open(json_output_path, "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
-                
+
+            logger.info("Faster-Whisper pipeline finished successfully.")
             return json_output_path
-            
+
+        except TranscriptionError:
+            raise
         except Exception as e:
-            logger.error(f"Transcription pipeline failed: {str(e)}")
-            raise TranscriptionError(f"Transcription failed: {str(e)}")
+            logger.error(f"Faster-Whisper pipeline failed: {e}", exc_info=True)
+            raise TranscriptionError(f"Transcription failed: {e}") from e
         finally:
             self._flush_memory()

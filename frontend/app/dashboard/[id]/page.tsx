@@ -25,7 +25,7 @@ export default function JobDetailsPage() {
     if (progress < 50) return "Step 3/8 — Separating Vocals (Demucs)";
     if (progress < 60) return "Step 4/8 — Extracting Melody";
     if (progress < 70) return "Step 5/8 — Rendering Piano Audio";
-    if (progress < 80) return "Step 6/8 — Transcribing with WhisperX";
+    if (progress < 80) return "Step 6/8 — Transcribing with Faster-Whisper";
     if (progress < 85) return "Step 7/8 — Generating Subtitles";
     if (progress < 100) return "Step 8/8 — Rendering Final Video";
     return "Complete";
@@ -37,7 +37,7 @@ export default function JobDetailsPage() {
     if (progress < 50) return "Running Demucs AI model to isolate vocals. This step is CPU-intensive and may take several minutes...";
     if (progress < 60) return "Using Basic Pitch to convert vocals to MIDI notes...";
     if (progress < 70) return "Rendering MIDI to piano audio with FluidSynth...";
-    if (progress < 80) return "Running WhisperX for word-level transcription...";
+    if (progress < 80) return "Running Faster-Whisper for word-level transcription...";
     if (progress < 85) return "Creating SRT, LRC, and ASS subtitle files...";
     if (progress < 100) return "Compositing final karaoke video with FFmpeg...";
     return "Processing complete!";
@@ -58,8 +58,8 @@ export default function JobDetailsPage() {
       return {
         ...jobData,
         video_url: `${apiBase}/api/v1/video/${jobId}/download`,
-        audio_url: `${apiBase}/api/v1/melody/${jobId}/download`,
-        srt_url: `${apiBase}/api/v1/transcription/${jobId}/subtitles?format=srt`,
+        audio_url: `/api/v1/melody/${jobId}/audio`,
+        srt_url: `/api/v1/transcription/${jobId}/subtitles?format=srt`,
       };
     },
     refetchInterval: (query: any) => {
@@ -75,6 +75,35 @@ export default function JobDetailsPage() {
       setCopied(true);
       toast.success("Full error log copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleAuthDownload = async (url: string, filename: string) => {
+    try {
+      const response = await api.get(url, { responseType: 'blob' });
+      const blob = new Blob([response.data]);
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      try {
+        // When responseType='blob', error bodies are also blobs — parse them
+        const errData = err?.response?.data;
+        if (errData instanceof Blob) {
+          const text = await errData.text();
+          const json = JSON.parse(text);
+          toast.error(json.detail || 'Download failed.');
+        } else {
+          toast.error(err?.response?.data?.detail || 'Download failed. File may not be available yet.');
+        }
+      } catch {
+        toast.error('Download failed. File may not be available yet.');
+      }
     }
   };
 
@@ -243,7 +272,7 @@ export default function JobDetailsPage() {
                         <p className="text-xs text-slate-500">Rendered via FluidSynth</p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => window.open(job.audio_url)}>
+                    <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.audio_url, 'piano_melody.mp3')}>
                       <Download className="w-4 h-4" />
                     </Button>
                   </div>
@@ -256,7 +285,7 @@ export default function JobDetailsPage() {
                         <p className="text-xs text-slate-500">Word-level aligned</p>
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => window.open(job.srt_url)}>
+                    <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.srt_url, 'vocals_subtitles.srt')}>
                       <Download className="w-4 h-4" />
                     </Button>
                   </div>

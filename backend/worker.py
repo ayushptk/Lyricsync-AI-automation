@@ -57,7 +57,7 @@ STEP_TIMEOUTS = {
     "vocal_separation": 180,  # 3 minutes max (fast FFmpeg mode takes ~5s, balanced htdemucs ~3-8min)
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
-    "transcription": 900,     # 15 minutes for WhisperX
+    "transcription": 2700,     # 45 minutes total for WhisperX on CPU (base model)
     "subtitle_generation": 60,# 1 minute for subtitle file generation
     "video_rendering": 600,   # 10 minutes for FFmpeg video render
 }
@@ -376,22 +376,33 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             metadata["piano_audio_path"] = vocals_path
         
         # =====================================================================
-        # STEP 6: Transcription (WhisperX) — OPTIONAL
+        # STEP 6: Transcription (Faster-Whisper) — OPTIONAL
         # =====================================================================
         ass_path = None
+        heartbeat_stop_tx = None
         try:
-            from services.transcriber import WhisperXTranscriber
+            from services.transcriber import FasterWhisperTranscriber
             
-            logger.info(f"[{job_id}] Step 6/8: Transcribing with WhisperX...")
+            logger.info(f"[{job_id}] Step 6/8: Transcribing with Faster-Whisper...")
+            
+            # Start progress heartbeat: gradually move from 70% → 79%
+            # Faster-Whisper on CPU can take 5-15 minutes, so we keep the UI alive
+            heartbeat_stop_tx = _start_progress_heartbeat(
+                db, job,
+                start_progress=70,
+                end_progress=80,
+                interval_seconds=20,
+                total_expected_seconds=1200  # Expected ~20 min on CPU
+            )
             
             def _run_transcription(audio_path):
-                transcriber = WhisperXTranscriber()
+                transcriber = FasterWhisperTranscriber()
                 return transcriber.transcribe(audio_path)
             
             transcription_path = run_with_timeout(
                 _run_transcription, args=(vocals_path,),
                 timeout_seconds=STEP_TIMEOUTS["transcription"],
-                step_name="Transcription (WhisperX)"
+                step_name="Transcription (Faster-Whisper)"
             )
             metadata["transcription_file_path"] = transcription_path
             job.transcription_file_path = transcription_path
@@ -432,6 +443,10 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                              log_msg=f"Transcription skipped ({type(e).__name__}: {str(e)[:100]})")
             metadata["transcription_file_path"] = None
             metadata["subtitles"] = None
+        finally:
+            # Always stop the transcription heartbeat
+            if heartbeat_stop_tx is not None:
+                heartbeat_stop_tx.set()
         
         # =====================================================================
         # STEP 8: Render Final Video (FFmpeg + ASS) — OPTIONAL

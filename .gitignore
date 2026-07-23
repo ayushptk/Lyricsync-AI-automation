@@ -39,3 +39,4 @@ celerybeat.pid
 ehthumbs.db
 Thumbs.db
 backend/tools/
+backend/.whisperx_cache/

@@ -23,4 +23,4 @@ soundfile
 demucs
 torch
 torchaudio
-# git+https://github.com/m-bain/whisperx.git
+git+https://github.com/m-bain/whisperx.git

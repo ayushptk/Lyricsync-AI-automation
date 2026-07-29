@@ -75,3 +75,98 @@ def download_audio(
         
     filename = "piano_melody.wav" if job.piano_audio_path and audio_path == job.piano_audio_path else "instrumental.wav"
     return FileResponse(path=audio_path, media_type="audio/wav", filename=filename)
+
+@router.get("/{job_id}/vocals")
+def download_vocals(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves the isolated vocals (acapella) audio for a completed job.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        
+    if job.project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this file")
+        
+    if job.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
+        
+    audio_path = job.vocals_file_path
+    
+    if not audio_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vocals audio was not generated for this job")
+
+    if not os.path.exists(audio_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vocals file not found on disk: {os.path.basename(audio_path)}")
+        
+    return FileResponse(path=audio_path, media_type="audio/wav", filename="vocals.wav")
+
+@router.get("/{job_id}/instrumental")
+def download_instrumental(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves the isolated instrumental (karaoke) audio for a completed job.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        
+    if job.project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this file")
+        
+    if job.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
+        
+    audio_path = job.backing_file_path
+    
+    if not audio_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Instrumental audio was not generated for this job")
+
+    if not os.path.exists(audio_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Instrumental file not found on disk: {os.path.basename(audio_path)}")
+        
+    return FileResponse(path=audio_path, media_type="audio/wav", filename="instrumental.wav")
+
+@router.get("/{job_id}/original")
+def download_original(
+    job_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieves the original full audio (music + vocals) for a completed job.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        
+    if job.project.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this file")
+        
+    if job.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Job is not completed yet (Current status: {job.status})")
+        
+    audio_path = job.backing_file_path
+    
+    if not audio_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Audio was not generated for this job")
+
+    # The backing file path is typically something like "audio_backing.wav". We derive original by removing "_backing"
+    original_path = audio_path.replace('_backing.wav', '.wav')
+
+    if not os.path.exists(original_path):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Original audio file not found on disk: {os.path.basename(original_path)}")
+        
+    return FileResponse(path=original_path, media_type="audio/wav", filename="original_audio.wav")
+
+

@@ -44,6 +44,9 @@ class JobResponse(BaseModel):
     # File availability flags — populated by model_validator from ORM object
     has_video: bool = False
     has_audio: bool = False
+    has_vocals: bool = False
+    has_instrumental: bool = False
+    has_original_audio: bool = False
     has_subtitles: bool = False
 
     @model_validator(mode="before")
@@ -69,6 +72,9 @@ class JobResponse(BaseModel):
                     or getattr(obj, "backing_file_path", None)
                     or getattr(obj, "vocals_file_path", None)
                 ),
+                "has_vocals": bool(getattr(obj, "vocals_file_path", None)),
+                "has_instrumental": bool(getattr(obj, "backing_file_path", None)),
+                "has_original_audio": bool(getattr(obj, "backing_file_path", None)),
                 "has_subtitles": bool(getattr(obj, "srt_file_path", None)),
             }
         return values

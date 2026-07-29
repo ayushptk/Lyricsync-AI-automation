@@ -59,6 +59,9 @@ export default function JobDetailsPage() {
         ...jobData,
         video_url: `${apiBase}/api/v1/video/${jobId}/download`,
         audio_url: `/api/v1/melody/${jobId}/audio`,
+        vocals_url: `/api/v1/melody/${jobId}/vocals`,
+        instrumental_url: `/api/v1/melody/${jobId}/instrumental`,
+        original_audio_url: `/api/v1/melody/${jobId}/original`,
         srt_url: `/api/v1/transcription/${jobId}/subtitles?format=srt`,
       };
     },
@@ -284,23 +287,43 @@ export default function JobDetailsPage() {
                   <CardTitle>Export Assets</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {job.has_audio ? (
+                  {job.has_instrumental ? (
                     <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
                       <div className="flex items-center">
                         <Music className="w-5 h-5 text-indigo-400 mr-3" />
                         <div>
-                          <p className="font-medium text-sm text-slate-200">Instrumental Audio</p>
-                          <p className="text-xs text-slate-500">Backing track / Piano</p>
+                          <p className="font-medium text-sm text-slate-200">Instrumental (Karaoke)</p>
+                          <p className="text-xs text-slate-500">No vocals</p>
                         </div>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.audio_url, 'instrumental.wav')}>
+                      <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.instrumental_url, 'instrumental.wav')}>
                         <Download className="w-4 h-4" />
                       </Button>
                     </div>
                   ) : (
                     <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800/50 flex items-center gap-3 text-slate-600">
                       <Music className="w-5 h-5 opacity-40" />
-                      <p className="text-xs">Audio not available</p>
+                      <p className="text-xs">Instrumental audio not available</p>
+                    </div>
+                  )}
+
+                  {job.has_original_audio ? (
+                    <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                      <div className="flex items-center">
+                        <Music className="w-5 h-5 text-purple-400 mr-3" />
+                        <div>
+                          <p className="font-medium text-sm text-slate-200">Original Audio</p>
+                          <p className="text-xs text-slate-500">Music + Vocals</p>
+                        </div>
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.original_audio_url, 'original_audio.wav')}>
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800/50 flex items-center gap-3 text-slate-600">
+                      <Music className="w-5 h-5 opacity-40" />
+                      <p className="text-xs">Original audio not available</p>
                     </div>
                   )}
 

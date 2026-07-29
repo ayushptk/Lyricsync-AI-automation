@@ -318,14 +318,10 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             
         except (StepTimeoutError, Exception) as e:
             error_type = "timed out" if isinstance(e, StepTimeoutError) else "failed"
-            logger.warning(f"[{job_id}] Track separation {error_type}: {str(e)}. Using preprocessed audio as fallback.")
-            _safe_update_job(db, job, progress=50,
-                             log_msg=f"Track separation {error_type} ({type(e).__name__}). Using original audio as fallback.")
-            metadata["vocals_file_path"] = vocals_path  # Use preprocessed audio
-            metadata["backing_file_path"] = backing_path
-            piano_path = None
-            job.vocals_file_path = vocals_path
-            job.backing_file_path = backing_path
+            logger.error(f"[{job_id}] Track separation {error_type}: {str(e)}. Failing job as vocals cannot be removed.")
+            _safe_update_job(db, job, status="failed", progress=50,
+                             error_msg=f"Track separation {error_type} ({type(e).__name__}): {str(e)[:200]}. Cannot produce karaoke track.")
+            return
         finally:
             # Always stop the heartbeat thread
             if heartbeat_stop is not None:

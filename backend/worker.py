@@ -54,7 +54,7 @@ celery_app.conf.update(
 STEP_TIMEOUTS = {
     "download": 300,          # 5 minutes for YouTube download
     "preprocess": 300,        # 5 minutes for FFmpeg normalization + trim
-    "vocal_separation": 600,  # Increased to 10 minutes (better quality demucs settings take longer on CPU)
+    "vocal_separation": 1800, # Increased to 30 minutes for CPU track separation
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
     "transcription": 2700,     # 45 minutes total for WhisperX on CPU (base model)
@@ -138,11 +138,13 @@ def run_with_timeout(func, args=(), kwargs=None, timeout_seconds=300, step_name=
             f"This usually means the operation is too heavy for this machine's resources."
         )
     
+
     if exception[0] is not None:
         raise exception[0]
     
     return result[0]
 
+    
 
 def _safe_update_job(db, job, status=None, progress=None, log_msg=None, error_msg=None):
     """
@@ -294,7 +296,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 start_progress=30,
                 end_progress=50,
                 interval_seconds=10,
-                total_expected_seconds=300  # Expected ~5 min on CPU
+                total_expected_seconds=900  # Expected ~15 min on CPU
             )
             
             def _run_track_separation(input_path):
@@ -414,7 +416,12 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             
             def _run_video_render(audio_path, subtitle_path):
                 renderer = VideoRenderer()
-                return renderer.render_karaoke_video(audio_path=audio_path, ass_path=subtitle_path)
+                bg_path = os.path.join(os.path.dirname(__file__), "assets", "karaoke_bg.png")
+                return renderer.render_karaoke_video(
+                    audio_path=audio_path, 
+                    ass_path=subtitle_path,
+                    background_image_path=bg_path
+                )
             
             final_video_path = run_with_timeout(
                 _run_video_render, args=(audio_for_video, ass_path),

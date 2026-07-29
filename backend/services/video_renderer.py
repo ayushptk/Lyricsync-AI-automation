@@ -115,9 +115,16 @@ class VideoRenderer:
         ffmpeg_cmd.extend(["-i", audio_path])
 
         # 2. Filters & Codecs
+        vf_filters = []
+        if background_image_path and os.path.exists(background_image_path):
+            vf_filters.append("scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080")
+            
         if ass_path:
-            vf_arg = self._build_ass_filter_arg(ass_path)
-            logger.info(f"ASS filter arg: {vf_arg}")
+            vf_filters.append(self._build_ass_filter_arg(ass_path))
+            
+        if vf_filters:
+            vf_arg = ",".join(vf_filters)
+            logger.info(f"VF filter arg: {vf_arg}")
             ffmpeg_cmd.extend(["-vf", vf_arg])
 
         ffmpeg_cmd.extend([

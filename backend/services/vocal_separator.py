@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 MAX_DURATION_FOR_SEPARATION = 600  # 10 minutes
 
 # Strategy selection: "fast" (FFmpeg only, ~5 seconds), "balanced" (htdemucs, ~3-8 min on CPU)
-# Controlled via env var; defaults to "fast" for best user experience
-SEPARATION_STRATEGY = os.getenv("VOCAL_SEPARATION_STRATEGY", "fast").lower()
+# Controlled via env var; defaults to "balanced"
+SEPARATION_STRATEGY = os.getenv("VOCAL_SEPARATION_STRATEGY", "balanced").lower()
 
 
 class DemucsSeparationError(Exception):
@@ -33,7 +33,7 @@ def _get_ffmpeg_exe() -> str:
         return "ffmpeg"  # Hope it's on PATH
 
 
-def _ffmpeg_vocal_extract(input_path: str, output_path: str) -> str:
+def _ffmpeg_vocal_extract(input_path: str, output_path: str) -> tuple[str, str, Optional[str]]:
     """
     Ultra-fast vocal extraction using FFmpeg audio filters.
     
@@ -109,7 +109,26 @@ def _ffmpeg_vocal_extract(input_path: str, output_path: str) -> str:
             raise DemucsSeparationError("FFmpeg produced no output file")
             
         logger.info(f"FFmpeg vocal extraction complete: {output_path}")
-        return output_path
+        
+        # For FFmpeg, we can't remove drums. We'll just create a simple karaoke track (no vocals).
+        # We use stereotools or simple phase cancellation to remove center channel.
+        backing_path = output_path.replace("_vocals.wav", "_backing.wav")
+        if is_stereo:
+            karaoke_cmd = [
+                ffmpeg_exe, "-i", input_path,
+                "-af", "pan=stereo|c0=c0-c1|c1=c1-c0",
+                "-y", backing_path
+            ]
+        else:
+            # For mono, we can't easily remove vocals, just copy
+            karaoke_cmd = [ffmpeg_exe, "-i", input_path, "-y", backing_path]
+            
+        subprocess.run(
+            karaoke_cmd, capture_output=True, timeout=120,
+            creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+        )
+        
+        return output_path, backing_path, None
         
     except subprocess.TimeoutExpired:
         raise DemucsSeparationError("FFmpeg vocal extraction timed out (>120s)")
@@ -145,7 +164,7 @@ class DemucsSeparator:
         
         if self.strategy == "balanced":
             # Only load heavy ML dependencies when actually needed
-            self.model_name = model_name or "htdemucs"
+            self.model_name = model_name or "htdemucs_6s"
             self._model = None
             self._device = None
         
@@ -193,7 +212,7 @@ class DemucsSeparator:
         except Exception as e:
             raise DemucsSeparationError(f"Model load failed: {str(e)}")
     
-    def _separate_with_demucs(self, input_path: str, output_path: str) -> str:
+    def _separate_with_demucs(self, input_path: str, vocals_path: str, backing_path: str, piano_path: str) -> tuple[str, str, Optional[str]]:
         """ML-based vocal separation using htdemucs (balanced mode)."""
         import torch
         from demucs.apply import apply_model
@@ -221,9 +240,9 @@ class DemucsSeparator:
         with torch.no_grad():
             sources = apply_model(
                 self._model, wav[None],
-                shifts=0,       # No shifts = much faster (was shifts=1)
+                shifts=1,       # Restored to 1 for better quality
                 split=True,
-                overlap=0.1,    # Reduced overlap for speed (was 0.25)
+                overlap=0.25,   # Restored to 0.25 for better quality (smoother transitions)
                 progress=False,
                 segment=None,
             )[0]
@@ -237,10 +256,41 @@ class DemucsSeparator:
         
         vocal_idx = self._model.sources.index('vocals')
         vocal_tensor = sources[vocal_idx].cpu()
-        self._model.cpu()
         
-        save_audio(vocal_tensor, output_path, samplerate=self._model.samplerate)
-        logger.info(f"Demucs vocal separation complete: {output_path}")
+        save_audio(vocal_tensor, vocals_path, samplerate=self._model.samplerate)
+        logger.info(f"Demucs vocal separation complete: {vocals_path}")
+        
+        # Extract piano
+        piano_tensor = None
+        if 'piano' in self._model.sources:
+            piano_idx = self._model.sources.index('piano')
+            piano_tensor = sources[piano_idx].cpu()
+            save_audio(piano_tensor, piano_path, samplerate=self._model.samplerate)
+            logger.info(f"Demucs piano separation complete: {piano_path}")
+        else:
+            logger.warning("Piano stem not found in model sources.")
+            
+        # Mix stems for the backing track (only vocals removed, all other instruments including drums are kept)
+        mix_tensor = None
+        for stem in self._model.sources:
+            if stem == 'vocals':
+                continue
+            idx = self._model.sources.index(stem)
+            if mix_tensor is None:
+                mix_tensor = sources[idx].clone()
+            else:
+                mix_tensor += sources[idx]
+                    
+        if mix_tensor is not None:
+            mix_tensor = mix_tensor.cpu()
+            save_audio(mix_tensor, backing_path, samplerate=self._model.samplerate)
+            logger.info(f"Demucs backing track (only vocals removed) complete: {backing_path}")
+        else:
+            logger.warning("Could not find required stems, using original audio for backing track.")
+            import shutil
+            shutil.copy2(input_path, backing_path)
+            
+        self._model.cpu()
         
         # Cleanup
         if self._device == "cuda":
@@ -248,17 +298,17 @@ class DemucsSeparator:
         import gc
         gc.collect()
         
-        return output_path
+        return vocals_path, backing_path, piano_path if piano_tensor is not None else None
     
-    def separate_vocals(self, input_path: str, output_dir: str = None) -> str:
+    def separate_tracks(self, input_path: str, output_dir: str = None) -> tuple[str, str, Optional[str]]:
         """
-        Separates vocals from an audio file.
+        Separates audio into vocals (for transcription) and backing track (only vocals removed).
         
         Uses the configured strategy:
-        - "fast": FFmpeg-based extraction (~5 seconds)
-        - "balanced": htdemucs ML model (~3-8 minutes on CPU)
+        - "fast": FFmpeg-based extraction (~5 seconds) (Note: Cannot remove drums, only vocals)
+        - "balanced": htdemucs ML model (~3-8 minutes on CPU) (Removes vocals)
         
-        Returns the path to the isolated vocals file.
+        Returns a tuple: (vocals_path, backing_path, piano_path)
         """
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")
@@ -269,8 +319,10 @@ class DemucsSeparator:
         filename = os.path.basename(input_path)
         name, _ = os.path.splitext(filename)
         vocals_path = os.path.join(output_dir, f"{name}_vocals.wav")
+        backing_path = os.path.join(output_dir, f"{name}_backing.wav")
+        piano_path = os.path.join(output_dir, f"{name}_piano.wav")
         
-        logger.info(f"Vocal separation: strategy='{self.strategy}', input={input_path}")
+        logger.info(f"Track separation: strategy='{self.strategy}', input={input_path}")
         
         # Check duration
         try:
@@ -289,9 +341,9 @@ class DemucsSeparator:
         
         # Execute chosen strategy
         if self.strategy == "fast":
-            return _ffmpeg_vocal_extract(input_path, vocals_path)
+            return _ffmpeg_vocal_extract(input_path, vocals_path, backing_path)
         elif self.strategy == "balanced":
-            return self._separate_with_demucs(input_path, vocals_path)
+            return self._separate_with_demucs(input_path, vocals_path, backing_path, piano_path)
         else:
             logger.warning(f"Unknown strategy '{self.strategy}', falling back to 'fast'")
-            return _ffmpeg_vocal_extract(input_path, vocals_path)
+            return _ffmpeg_vocal_extract(input_path, vocals_path, backing_path)

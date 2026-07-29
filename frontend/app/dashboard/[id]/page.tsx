@@ -78,9 +78,20 @@ export default function JobDetailsPage() {
     }
   };
 
-  const handleAuthDownload = async (url: string, filename: string) => {
+  const handleAuthDownload = async (url: string, defaultFilename: string) => {
     try {
       const response = await api.get(url, { responseType: 'blob' });
+      
+      // Try to get filename from Content-Disposition header
+      let filename = defaultFilename;
+      const disposition = response.headers['content-disposition'];
+      if (disposition && disposition.indexOf('filename=') !== -1) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+        if (matches != null && matches[1]) { 
+          filename = matches[1].replace(/['"]/g, '');
+        }
+      }
+      
       const blob = new Blob([response.data]);
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -239,21 +250,30 @@ export default function JobDetailsPage() {
             <div className="lg:col-span-2 space-y-6">
               <Card className="overflow-hidden border-slate-800">
                 <div className="aspect-video bg-black flex items-center justify-center relative">
-                  {/* Real implementation would use the video tag */}
-                  <video 
-                    controls 
-                    className="w-full h-full object-contain"
-                    poster="/grid.svg"
-                  >
-                    <source src={job.video_url} type="video/mp4" />
-                    Your browser does not support the video tag.
-                  </video>
+                  {job.has_video ? (
+                    <video 
+                      controls 
+                      className="w-full h-full object-contain"
+                      poster="/grid.svg"
+                    >
+                      <source src={job.video_url} type="video/mp4" />
+                      Your browser does not support the video tag.
+                    </video>
+                  ) : (
+                    <div className="text-center text-slate-500 p-8">
+                      <Video className="w-12 h-12 mx-auto mb-3 opacity-40" />
+                      <p className="text-sm">Video rendering was skipped or unavailable.</p>
+                      <p className="text-xs mt-1 text-slate-600">The audio track is still available for download.</p>
+                    </div>
+                  )}
                 </div>
                 <CardContent className="p-4 bg-slate-900/50 flex justify-between items-center">
                   <span className="font-medium">Final Karaoke Render</span>
-                  <Button variant="outline" size="sm" onClick={() => window.open(job.video_url)}>
-                    <Download className="w-4 h-4 mr-2" /> Download MP4
-                  </Button>
+                  {job.has_video && (
+                    <Button variant="outline" size="sm" onClick={() => window.open(job.video_url)}>
+                      <Download className="w-4 h-4 mr-2" /> Download MP4
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -264,31 +284,45 @@ export default function JobDetailsPage() {
                   <CardTitle>Export Assets</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
-                    <div className="flex items-center">
-                      <Music className="w-5 h-5 text-indigo-400 mr-3" />
-                      <div>
-                        <p className="font-medium text-sm text-slate-200">Piano Audio</p>
-                        <p className="text-xs text-slate-500">Rendered via FluidSynth</p>
+                  {job.has_audio ? (
+                    <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                      <div className="flex items-center">
+                        <Music className="w-5 h-5 text-indigo-400 mr-3" />
+                        <div>
+                          <p className="font-medium text-sm text-slate-200">Instrumental Audio</p>
+                          <p className="text-xs text-slate-500">Backing track / Piano</p>
+                        </div>
                       </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.audio_url, 'instrumental.wav')}>
+                        <Download className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.audio_url, 'piano_melody.mp3')}>
-                      <Download className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  ) : (
+                    <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800/50 flex items-center gap-3 text-slate-600">
+                      <Music className="w-5 h-5 opacity-40" />
+                      <p className="text-xs">Audio not available</p>
+                    </div>
+                  )}
 
-                  <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
-                    <div className="flex items-center">
-                      <FileText className="w-5 h-5 text-green-400 mr-3" />
-                      <div>
-                        <p className="font-medium text-sm text-slate-200">Subtitles (SRT)</p>
-                        <p className="text-xs text-slate-500">Word-level aligned</p>
+                  {job.has_subtitles ? (
+                    <div className="p-4 rounded-lg bg-slate-900 border border-slate-800 flex justify-between items-center">
+                      <div className="flex items-center">
+                        <FileText className="w-5 h-5 text-green-400 mr-3" />
+                        <div>
+                          <p className="font-medium text-sm text-slate-200">Subtitles (SRT)</p>
+                          <p className="text-xs text-slate-500">Word-level aligned</p>
+                        </div>
                       </div>
+                      <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.srt_url, 'vocals_subtitles.srt')}>
+                        <Download className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => handleAuthDownload(job.srt_url, 'vocals_subtitles.srt')}>
-                      <Download className="w-4 h-4" />
-                    </Button>
-                  </div>
+                  ) : (
+                    <div className="p-4 rounded-lg bg-slate-900/50 border border-slate-800/50 flex items-center gap-3 text-slate-600">
+                      <FileText className="w-5 h-5 opacity-40" />
+                      <p className="text-xs">Subtitles not available</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

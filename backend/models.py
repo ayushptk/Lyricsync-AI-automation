@@ -118,6 +118,7 @@ class Job(Base):
     midi_file_path = Column(String, nullable=True)
     piano_audio_path = Column(String, nullable=True)
     vocals_file_path = Column(String, nullable=True)
+    backing_file_path = Column(String, nullable=True)
     transcription_file_path = Column(String, nullable=True)
     srt_file_path = Column(String, nullable=True)
     lrc_file_path = Column(String, nullable=True)

@@ -54,7 +54,7 @@ celery_app.conf.update(
 STEP_TIMEOUTS = {
     "download": 300,          # 5 minutes for YouTube download
     "preprocess": 300,        # 5 minutes for FFmpeg normalization + trim
-    "vocal_separation": 180,  # 3 minutes max (fast FFmpeg mode takes ~5s, balanced htdemucs ~3-8min)
+    "vocal_separation": 600,  # Increased to 10 minutes (better quality demucs settings take longer on CPU)
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
     "transcription": 2700,     # 45 minutes total for WhisperX on CPU (base model)
@@ -75,8 +75,11 @@ def _start_progress_heartbeat(db, job, start_progress, end_progress, interval_se
     Returns a threading.Event that should be set to stop the heartbeat.
     """
     stop_event = threading.Event()
+    job_id = job.id
     
     def _heartbeat():
+        from database import SessionLocal
+        from models import Job as JobModel
         elapsed = 0
         while not stop_event.is_set():
             stop_event.wait(timeout=interval_seconds)
@@ -88,18 +91,19 @@ def _start_progress_heartbeat(db, job, start_progress, end_progress, interval_se
             fraction = min(elapsed / total_expected_seconds, 0.95)
             current = start_progress + (end_progress - start_progress) * fraction
             current = min(current, end_progress - 1)  # Never exceed end_progress-1
+            
+            local_db = SessionLocal()
             try:
-                job.progress = round(current, 1)
-                db.commit()
-                logger.info(f"[{job.id}] Heartbeat: progress={job.progress}% (step still running...)")
+                local_job = local_db.query(JobModel).filter(JobModel.id == job_id).first()
+                if local_job and local_job.status == "processing":
+                    local_job.progress = round(current, 1)
+                    local_db.commit()
             except Exception as e:
-                logger.warning(f"[{job.id}] Heartbeat DB update failed: {e}")
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
+                logger.warning(f"[{job_id}] Heartbeat DB update failed: {e}")
+            finally:
+                local_db.close()
     
-    heartbeat_thread = threading.Thread(target=_heartbeat, daemon=True, name=f"heartbeat-{job.id}")
+    heartbeat_thread = threading.Thread(target=_heartbeat, daemon=True, name=f"heartbeat-{job_id}")
     heartbeat_thread.start()
     return stop_event
 
@@ -270,16 +274,18 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             return  # Can't continue without preprocessed audio audio
         
         # =====================================================================
-        # STEP 3: Separate Vocals (Demucs) — GRACEFUL FALLBACK
+        # STEP 3: Separate Tracks (Demucs) — GRACEFUL FALLBACK
         # =====================================================================
         vocals_path = metadata["preprocessed_file_path"]  # Fallback: use preprocessed audio
+        backing_path = metadata["preprocessed_file_path"]
+        piano_path = None
         heartbeat_stop = None
         try:
             from services.vocal_separator import DemucsSeparator, DemucsSeparationError
             
-            logger.info(f"[{job_id}] Step 3/8: Separating vocals (fast mode)...")
+            logger.info(f"[{job_id}] Step 3/8: Separating tracks...")
             _safe_update_job(db, job, progress=30,
-                             log_msg="Starting vocal separation (fast FFmpeg mode)...")
+                             log_msg="Starting track separation...")
             
             # Start progress heartbeat: gradually move from 30% → 49%
             # With fast mode this completes in seconds, but keep heartbeat for balanced mode fallback
@@ -288,92 +294,45 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 start_progress=30,
                 end_progress=50,
                 interval_seconds=10,
-                total_expected_seconds=60  # Much shorter expected time
+                total_expected_seconds=300  # Expected ~5 min on CPU
             )
             
-            def _run_vocal_separation(input_path):
-                separator = DemucsSeparator()  # Uses VOCAL_SEPARATION_STRATEGY env var (default: "fast")
-                return separator.separate_vocals(input_path)
+            def _run_track_separation(input_path):
+                separator = DemucsSeparator()  # Uses VOCAL_SEPARATION_STRATEGY env var
+                return separator.separate_tracks(input_path)
             
-            vocals_path = run_with_timeout(
-                _run_vocal_separation, args=(metadata["preprocessed_file_path"],),
+            vocals_path, backing_path, piano_path = run_with_timeout(
+                _run_track_separation, args=(metadata["preprocessed_file_path"],),
                 timeout_seconds=STEP_TIMEOUTS["vocal_separation"],
-                step_name="Vocal Separation"
+                step_name="Track Separation"
             )
             metadata["vocals_file_path"] = vocals_path
+            metadata["backing_file_path"] = backing_path
+            if piano_path:
+                metadata["piano_audio_path"] = piano_path
+                job.piano_audio_path = piano_path
             job.vocals_file_path = vocals_path
+            job.backing_file_path = backing_path
             _safe_update_job(db, job, progress=50,
-                             log_msg="Vocal separation complete.")
+                             log_msg="Track separation complete.")
             
         except (StepTimeoutError, Exception) as e:
             error_type = "timed out" if isinstance(e, StepTimeoutError) else "failed"
-            logger.warning(f"[{job_id}] Vocal separation {error_type}: {str(e)}. Using preprocessed audio as fallback.")
+            logger.warning(f"[{job_id}] Track separation {error_type}: {str(e)}. Using preprocessed audio as fallback.")
             _safe_update_job(db, job, progress=50,
-                             log_msg=f"Vocal separation {error_type} ({type(e).__name__}). Using original audio as fallback.")
+                             log_msg=f"Track separation {error_type} ({type(e).__name__}). Using original audio as fallback.")
             metadata["vocals_file_path"] = vocals_path  # Use preprocessed audio
+            metadata["backing_file_path"] = backing_path
+            piano_path = None
+            job.vocals_file_path = vocals_path
+            job.backing_file_path = backing_path
         finally:
             # Always stop the heartbeat thread
             if heartbeat_stop is not None:
                 heartbeat_stop.set()
         
-        # =====================================================================
-        # STEP 4: Extract Melody (Basic Pitch) — OPTIONAL
-        # =====================================================================
-        try:
-            from services.basic_pitch_extractor import MelodyExtractor
-            
-            logger.info(f"[{job_id}] Step 4/8: Extracting melody...")
-            
-            def _run_melody(input_path):
-                extractor = MelodyExtractor()
-                return extractor.extract_melody(input_path)
-            
-            midi_path = run_with_timeout(
-                _run_melody, args=(vocals_path,),
-                timeout_seconds=STEP_TIMEOUTS["melody_extraction"],
-                step_name="Melody Extraction"
-            )
-            metadata["midi_file_path"] = midi_path
-            job.midi_file_path = midi_path
-            _safe_update_job(db, job, progress=60,
-                             log_msg="Melody extraction complete.")
-        except Exception as e:
-            logger.warning(f"[{job_id}] Skipping melody extraction: {str(e)}")
-            _safe_update_job(db, job, progress=60,
-                             log_msg=f"Melody extraction skipped ({type(e).__name__}: {str(e)[:100]})")
-            metadata["midi_file_path"] = None
-        
-        # =====================================================================
-        # STEP 5: Render MIDI to Audio (FluidSynth) — OPTIONAL
-        # =====================================================================
-        if metadata.get("midi_file_path"):
-            try:
-                from services.piano_renderer import PianoRenderer
-                
-                logger.info(f"[{job_id}] Step 5/8: Rendering MIDI to piano audio...")
-                
-                def _run_piano(midi_path):
-                    renderer = PianoRenderer()
-                    return renderer.render_midi_to_mp3(midi_path)
-                
-                piano_mp3_path = run_with_timeout(
-                    _run_piano, args=(metadata["midi_file_path"],),
-                    timeout_seconds=STEP_TIMEOUTS["piano_rendering"],
-                    step_name="Piano Rendering"
-                )
-                metadata["piano_audio_path"] = piano_mp3_path
-                job.piano_audio_path = piano_mp3_path
-                _safe_update_job(db, job, progress=70,
-                                 log_msg="Piano rendering complete.")
-            except Exception as e:
-                logger.warning(f"[{job_id}] Skipping piano rendering: {str(e)}")
-                _safe_update_job(db, job, progress=70,
-                                 log_msg=f"Piano rendering skipped ({type(e).__name__}). Using vocals.")
-                metadata["piano_audio_path"] = vocals_path
-        else:
-            _safe_update_job(db, job, progress=70,
-                             log_msg="Piano rendering skipped (no MIDI available).")
-            metadata["piano_audio_path"] = vocals_path
+        # We no longer extract piano melody; backing_path is the instrumental track.
+        # (Skipping Steps 4 and 5)
         
         # =====================================================================
         # STEP 6: Transcription (Faster-Whisper) — OPTIONAL
@@ -449,36 +408,31 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 heartbeat_stop_tx.set()
         
         # =====================================================================
-        # STEP 8: Render Final Video (FFmpeg + ASS) — OPTIONAL
+        # STEP 8: Render Final Video (FFmpeg) — always runs, ASS subtitles optional
         # =====================================================================
-        if ass_path:
-            try:
-                from services.video_renderer import VideoRenderer
-                
-                logger.info(f"[{job_id}] Step 8/8: Rendering final karaoke video...")
-                audio_for_video = metadata.get("piano_audio_path") or vocals_path
-                
-                def _run_video_render(audio_path, subtitle_path):
-                    renderer = VideoRenderer()
-                    return renderer.render_karaoke_video(audio_path=audio_path, ass_path=subtitle_path)
-                
-                final_video_path = run_with_timeout(
-                    _run_video_render, args=(audio_for_video, ass_path),
-                    timeout_seconds=STEP_TIMEOUTS["video_rendering"],
-                    step_name="Video Rendering"
-                )
-                metadata["final_video_path"] = final_video_path
-                job.final_video_path = final_video_path
-                _safe_update_job(db, job, progress=100,
-                                 log_msg="Video rendering complete.")
-            except Exception as e:
-                logger.warning(f"[{job_id}] Video rendering failed: {str(e)}")
-                _safe_update_job(db, job, progress=100,
-                                 log_msg=f"Video rendering failed ({type(e).__name__}).")
-                metadata["final_video_path"] = None
-        else:
+        try:
+            from services.video_renderer import VideoRenderer
+            
+            logger.info(f"[{job_id}] Step 8/8: Rendering final karaoke video...")
+            audio_for_video = backing_path
+            
+            def _run_video_render(audio_path, subtitle_path):
+                renderer = VideoRenderer()
+                return renderer.render_karaoke_video(audio_path=audio_path, ass_path=subtitle_path)
+            
+            final_video_path = run_with_timeout(
+                _run_video_render, args=(audio_for_video, ass_path),
+                timeout_seconds=STEP_TIMEOUTS["video_rendering"],
+                step_name="Video Rendering"
+            )
+            metadata["final_video_path"] = final_video_path
+            job.final_video_path = final_video_path
             _safe_update_job(db, job, progress=100,
-                             log_msg="Video rendering skipped (no subtitles available).")
+                             log_msg="Video rendering complete.")
+        except Exception as e:
+            logger.warning(f"[{job_id}] Video rendering failed: {str(e)}")
+            _safe_update_job(db, job, progress=100,
+                             log_msg=f"Video rendering failed ({type(e).__name__}: {str(e)[:200]}).")
             metadata["final_video_path"] = None
         
         # =====================================================================

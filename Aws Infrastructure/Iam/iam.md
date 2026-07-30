@@ -23,7 +23,7 @@ Created a dedicated IAM user for daily development instead of using the AWS root
 
 ###  IAM Group
 
-Created a Developers group and added the IAM user to the group.
+Created a Developers group and added the IAM user i.e ayush to the group.
 
 **Reason**
 - Permissions can be managed centrally.

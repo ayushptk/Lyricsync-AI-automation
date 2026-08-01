@@ -1,0 +1,10 @@
+.venv
+venv
+__pycache__
+.whisperx_cache
+.git
+.env
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache

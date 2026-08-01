@@ -59,7 +59,7 @@ api.interceptors.response.use(
         processQueue(err, null);
         // Refresh token failed, user is logged out
         useAuthStore.getState().setUser(null);
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
            window.location.href = '/login';
         }
         return Promise.reject(err);
@@ -71,7 +71,7 @@ api.interceptors.response.use(
     // If it's a 401 on the refresh endpoint itself, clean up and redirect
     if (error.response?.status === 401 && originalRequest.url === '/api/v1/auth/refresh') {
         useAuthStore.getState().setUser(null);
-        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
            window.location.href = '/login';
         }
     }

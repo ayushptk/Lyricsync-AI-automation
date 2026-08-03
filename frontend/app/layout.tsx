@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Outfit } from "next/font/google";
+import { Inter, Manrope } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
@@ -8,14 +8,14 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const manrope = Manrope({
+  variable: "--font-manrope",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "LyricSync AI | Pro Audio Separation & Lyric Videos",
-  description: "AI-powered vocal extraction and automatic lyric video generation for creators.",
+  title: "LyricSync AI | Cinematic Audio Separation",
+  description: "AI-powered vocal extraction and cinematic lyric video generation.",
 };
 
 import Providers from "./providers";
@@ -28,11 +28,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${outfit.variable} h-full antialiased dark`}
+      className={`${inter.variable} ${manrope.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body 
-        className="min-h-full flex flex-col font-sans bg-background text-foreground"
+        className="min-h-full flex flex-col font-sans bg-background text-text-primary tracking-tight"
         suppressHydrationWarning
       >
         <Providers>

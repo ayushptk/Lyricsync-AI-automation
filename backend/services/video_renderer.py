@@ -71,7 +71,8 @@ class VideoRenderer:
         audio_path: str,
         ass_path: Optional[str] = None,
         background_image_path: Optional[str] = None,
-        output_dir: Optional[str] = None
+        output_dir: Optional[str] = None,
+        aspect_ratio: str = "16:9"
     ) -> str:
         """
         Renders an MP4 video combining audio, background, and optional ASS karaoke subtitles.
@@ -99,6 +100,11 @@ class VideoRenderer:
             "-y", # Overwrite
         ]
 
+        if aspect_ratio == "9:16":
+            target_w, target_h = 1080, 1920
+        else:
+            target_w, target_h = 1920, 1080
+
         # 1. Inputs
         if background_image_path and os.path.exists(background_image_path):
             ffmpeg_cmd.extend([
@@ -106,10 +112,10 @@ class VideoRenderer:
                 "-i", background_image_path
             ])
         else:
-            # Default to a generic black background (1920x1080)
+            # Default to a generic black background
             ffmpeg_cmd.extend([
                 "-f", "lavfi",
-                "-i", "color=c=black:s=1920x1080:r=30"
+                "-i", f"color=c=black:s={target_w}x{target_h}:r=30"
             ])
 
         ffmpeg_cmd.extend(["-i", audio_path])
@@ -117,7 +123,7 @@ class VideoRenderer:
         # 2. Filters & Codecs
         vf_filters = []
         if background_image_path and os.path.exists(background_image_path):
-            vf_filters.append("scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080")
+            vf_filters.append(f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h}")
             
         if ass_path:
             vf_filters.append(self._build_ass_filter_arg(ass_path))

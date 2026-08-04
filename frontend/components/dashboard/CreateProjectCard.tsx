@@ -7,11 +7,13 @@ import { Link2, CheckCircle2, AlertCircle } from "lucide-react";
 interface CreateProjectCardProps {
   url: string;
   setUrl: (url: string) => void;
+  aspectRatio: string;
+  setAspectRatio: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
   isPending: boolean;
 }
 
-export function CreateProjectCard({ url, setUrl, onSubmit, isPending }: CreateProjectCardProps) {
+export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, onSubmit, isPending }: CreateProjectCardProps) {
   const [isFocused, setIsFocused] = useState(false);
 
   // Basic youtube url validation for UI feedback
@@ -87,6 +89,32 @@ export function CreateProjectCard({ url, setUrl, onSubmit, isPending }: CreatePr
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+
+          {/* Aspect Ratio Selection */}
+          <div className="flex gap-4">
+            <button
+              type="button"
+              onClick={() => setAspectRatio("16:9")}
+              className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
+                aspectRatio === "16:9" 
+                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200' 
+                  : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5'
+              }`}
+            >
+              Standard (16:9)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAspectRatio("9:16")}
+              className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
+                aspectRatio === "9:16" 
+                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200' 
+                  : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5'
+              }`}
+            >
+              TikTok / Shorts (9:16)
+            </button>
           </div>
           
           <AnimatePresence>

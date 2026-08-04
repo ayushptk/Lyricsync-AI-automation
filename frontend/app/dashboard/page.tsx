@@ -31,6 +31,7 @@ interface Job {
 
 export default function DashboardPage() {
   const [url, setUrl] = useState("");
+  const [aspectRatio, setAspectRatio] = useState("16:9");
   const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
@@ -59,10 +60,11 @@ export default function DashboardPage() {
   const processingJobs = jobs.filter(j => j.status === "processing" || j.status === "queued").length;
 
   const ingestMutation = useMutation({
-    mutationFn: async (youtubeUrl: string) => {
+    mutationFn: async ({ youtubeUrl, ratio }: { youtubeUrl: string, ratio: string }) => {
       const response = await api.post("/api/v1/ingest/youtube", { 
         url: youtubeUrl,
-        project_title: "New Lyric Video" 
+        project_title: "New Lyric Video",
+        aspect_ratio: ratio
       });
       return response.data;
     },
@@ -100,7 +102,7 @@ export default function DashboardPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      ingestMutation.mutate(url);
+      ingestMutation.mutate({ youtubeUrl: url, ratio: aspectRatio });
     }
   };
 
@@ -123,6 +125,8 @@ export default function DashboardPage() {
               <CreateProjectCard 
                 url={url}
                 setUrl={setUrl}
+                aspectRatio={aspectRatio}
+                setAspectRatio={setAspectRatio}
                 onSubmit={handleSubmit}
                 isPending={ingestMutation.isPending}
               />

@@ -21,6 +21,7 @@ from typing import Optional
 class YouTubeIngestRequest(BaseModel):
     url: HttpUrl
     project_title: Optional[str] = "Untitled Project"
+    aspect_ratio: Optional[str] = "16:9"
 
 
 def _run_ingest_in_thread(youtube_url: str, job_id: str):
@@ -91,7 +92,8 @@ def ingest_youtube(
     job = Job(
         project_id=project.id,
         job_type="transcription", # Initial phase is downloading/transcription prep
-        status="queued"
+        status="queued",
+        aspect_ratio=request.aspect_ratio
     )
     db.add(job)
     db.commit()

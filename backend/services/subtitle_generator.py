@@ -104,22 +104,35 @@ class SubtitleGenerator:
             f.write(lrc_content)
         return output_path
 
-    def generate_ass(self, output_path: str = None) -> str:
+    def generate_ass(self, output_path: str = None, aspect_ratio: str = "16:9") -> str:
         if output_path is None:
             output_path = self.json_path.replace("_transcription.json", ".ass")
             
-        ass_header = """[Script Info]
+        if aspect_ratio == "9:16":
+            play_res_x, play_res_y = 1080, 1920
+            font_size = 86
+            margin_v = 400
+            margin_h = 40
+            outline = 4
+        else:
+            play_res_x, play_res_y = 1920, 1080
+            font_size = 64
+            margin_v = 80
+            margin_h = 80
+            outline = 2
+            
+        ass_header = f"""[Script Info]
 Title: Karaoke Generated
 ScriptType: v4.00+
 WrapStyle: 0
 ScaledBorderAndShadow: yes
 YCbCr Matrix: None
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: {play_res_x}
+PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Georgia,64,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,5,80,80,80,1
+Style: Default,Georgia,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,{outline},0,5,{margin_h},{margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

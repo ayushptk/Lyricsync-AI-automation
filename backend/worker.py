@@ -376,7 +376,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 sub_generator = SubtitleGenerator(transcription_path)
                 srt_path = sub_generator.generate_srt()
                 lrc_path = sub_generator.generate_lrc()
-                ass_path = sub_generator.generate_ass()
+                ass_path = sub_generator.generate_ass(aspect_ratio=job.aspect_ratio)
                 metadata["subtitles"] = {
                     "srt": srt_path,
                     "lrc": lrc_path,
@@ -420,7 +420,8 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 return renderer.render_karaoke_video(
                     audio_path=audio_path, 
                     ass_path=subtitle_path,
-                    background_image_path=bg_path
+                    background_image_path=bg_path,
+                    aspect_ratio=job.aspect_ratio
                 )
             
             final_video_path = run_with_timeout(

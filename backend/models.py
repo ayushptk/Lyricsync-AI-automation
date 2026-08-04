@@ -113,6 +113,7 @@ class Job(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    aspect_ratio = Column(String, default="16:9")
 
     # Output file paths (populated by the worker pipeline)
     midi_file_path = Column(String, nullable=True)

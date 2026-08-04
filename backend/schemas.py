@@ -40,6 +40,7 @@ class JobResponse(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
+    aspect_ratio: str = "16:9"
     error_log: Optional[str] = None
     # File availability flags — populated by model_validator from ORM object
     has_video: bool = False
@@ -65,6 +66,7 @@ class JobResponse(BaseModel):
                 "started_at": obj.started_at,
                 "completed_at": obj.completed_at,
                 "created_at": obj.created_at,
+                "aspect_ratio": getattr(obj, "aspect_ratio", "16:9"),
                 "error_log": obj.error_log,
                 "has_video": bool(getattr(obj, "final_video_path", None)),
                 "has_audio": bool(

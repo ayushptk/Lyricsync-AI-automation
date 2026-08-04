@@ -55,6 +55,7 @@ STEP_TIMEOUTS = {
     "download": 300,          # 5 minutes for YouTube download
     "preprocess": 300,        # 5 minutes for FFmpeg normalization + trim
     "vocal_separation": 1800, # Increased to 30 minutes for CPU track separation
+    "loudness_normalization": 180,  # 3 minutes for FFmpeg loudnorm two-pass
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
     "transcription": 2700,     # 45 minutes total for WhisperX on CPU (base model)
@@ -329,8 +330,56 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             if heartbeat_stop is not None:
                 heartbeat_stop.set()
         
-        # We no longer extract piano melody; backing_path is the instrumental track.
-        # (Skipping Steps 4 and 5)
+        # =====================================================================
+        # STEP 4: Loudness Normalization — match instrumental to original loudness
+        # =====================================================================
+        try:
+            from services.loudness_normalizer import normalize_instrumental, LoudnessNormalizationError
+            
+            logger.info(f"[{job_id}] Step 4/8: Normalizing instrumental loudness...")
+            _safe_update_job(db, job, progress=55,
+                             log_msg="Normalizing instrumental loudness to match original...")
+            
+            # Use the original downloaded audio (before preprocessing) as the
+            # loudness reference — it represents the true perceived loudness.
+            original_audio_for_reference = metadata["file_path"]
+            
+            def _run_loudness_norm(original_path, instrumental_path):
+                return normalize_instrumental(original_path, instrumental_path)
+            
+            normalized_backing_path, loudness_report = run_with_timeout(
+                _run_loudness_norm,
+                args=(original_audio_for_reference, backing_path),
+                timeout_seconds=STEP_TIMEOUTS["loudness_normalization"],
+                step_name="Loudness Normalization"
+            )
+            
+            # Update paths to use the normalized version
+            backing_path = normalized_backing_path
+            metadata["backing_file_path"] = normalized_backing_path
+            job.backing_file_path = normalized_backing_path
+            
+            gain_applied = loudness_report.get('calculated_gain_db', 0)
+            orig_lufs = loudness_report.get('original', {}).get('integrated_lufs', '?')
+            after_lufs = loudness_report.get('instrumental_after', {}).get('integrated_lufs', '?')
+            skipped = loudness_report.get('skipped', False)
+            
+            if skipped:
+                log_detail = f"Loudness normalization skipped (already within 1 dB). Original: {orig_lufs} LUFS"
+            else:
+                log_detail = (
+                    f"Loudness normalization applied: {gain_applied:+.1f} dB gain. "
+                    f"Original: {orig_lufs} LUFS → Instrumental: {after_lufs} LUFS"
+                )
+            
+            _safe_update_job(db, job, progress=60, log_msg=log_detail)
+            
+        except (StepTimeoutError, Exception) as e:
+            # Loudness normalization is non-critical — if it fails, we continue
+            # with the un-normalized backing track (it will just be quieter).
+            logger.warning(f"[{job_id}] Loudness normalization failed: {str(e)}. Continuing with original backing track.")
+            _safe_update_job(db, job, progress=60,
+                             log_msg=f"Loudness normalization skipped ({type(e).__name__}: {str(e)[:150]}). Using original backing track.")
         
         # =====================================================================
         # STEP 6: Transcription (Faster-Whisper) — OPTIONAL

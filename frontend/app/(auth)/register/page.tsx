@@ -108,7 +108,7 @@ export default function RegisterPage() {
           whileTap={status === "idle" ? { scale: 0.98 } : {}}
           type="submit"
           disabled={status !== "idle"}
-          className="relative w-full h-[48px] md:h-[52px] rounded-xl bg-indigo-500 text-[15px] font-medium text-white shadow-sm transition-all overflow-hidden disabled:cursor-not-allowed group mt-2"
+          className="relative w-full h-[48px] md:h-[52px] rounded-xl bg-accent hover:bg-accent-hover text-[15px] font-medium text-white shadow-sm transition-all overflow-hidden disabled:cursor-not-allowed group mt-2"
         >
           <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out" />
           
@@ -143,9 +143,9 @@ export default function RegisterPage() {
 
         <p className="text-[14px] text-slate-400 text-center pt-4">
           Already have an account?{" "}
-          <Link href="/login" className="text-white hover:text-indigo-300 transition-colors font-medium relative group inline-block">
+          <Link href="/login" className="text-white hover:text-accent transition-colors font-medium relative group inline-block">
             Sign in
-            <span className="absolute -bottom-0.5 left-0 w-0 h-[1px] bg-indigo-400 transition-all group-hover:w-full"></span>
+            <span className="absolute -bottom-0.5 left-0 w-0 h-[1px] bg-accent-hover transition-all group-hover:w-full"></span>
           </Link>
         </p>
       </form>

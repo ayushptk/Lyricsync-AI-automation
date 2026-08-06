@@ -98,7 +98,7 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
               onClick={() => setAspectRatio("16:9")}
               className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
                 aspectRatio === "16:9" 
-                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200' 
+                  ? 'bg-yellow-600/20 border-yellow-600/50 text-yellow-200' 
                   : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5'
               }`}
             >
@@ -109,7 +109,7 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
               onClick={() => setAspectRatio("9:16")}
               className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
                 aspectRatio === "9:16" 
-                  ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-200' 
+                  ? 'bg-yellow-600/20 border-yellow-600/50 text-yellow-200' 
                   : 'bg-black/20 border-white/10 text-slate-400 hover:bg-white/5'
               }`}
             >
@@ -138,7 +138,7 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
             disabled={!showSuccess || isPending}
             className={`relative w-full h-[52px] rounded-xl font-medium flex items-center justify-center transition-all duration-300 overflow-hidden ${
               showSuccess && !isPending
-                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-[0_4px_20px_-4px_rgba(99,102,241,0.5)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(99,102,241,0.6)] active:translate-y-0 active:scale-[0.98]' 
+                ? 'bg-accent hover:bg-accent-hover text-white shadow-[0_4px_20px_-4px_rgba(202,138,4,0.5)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(202,138,4,0.6)] active:translate-y-0 active:scale-[0.98]' 
                 : 'bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed'
             }`}
           >

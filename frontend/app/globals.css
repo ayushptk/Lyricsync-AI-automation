@@ -34,8 +34,8 @@
   --surface-elevated: #11162D;
   --foreground: #F8FAFC;
   
-  --accent: #4F46E5; /* Indigo */
-  --accent-hover: #6366F1; /* Lighter Indigo */
+  --accent: #ca8a04; /* Dark Yellow (Yellow 600) */
+  --accent-hover: #a16207; /* Darker Yellow (Yellow 700) */
   
   --text-primary: #F8FAFC;
   --text-secondary: #94A3B8;

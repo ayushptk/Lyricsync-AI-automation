@@ -230,7 +230,7 @@ export default function JobDetailsPage() {
               <Button variant="outline" onClick={() => router.push("/dashboard")}>
                 <ArrowLeft className="w-4 h-4 mr-2" /> Back to Dashboard
               </Button>
-              <Button className="bg-indigo-600 hover:bg-indigo-500" onClick={() => router.push("/dashboard")}>
+              <Button onClick={() => router.push("/dashboard")}>
                 <RotateCcw className="w-4 h-4 mr-2" /> Try Another Video
               </Button>
             </div>

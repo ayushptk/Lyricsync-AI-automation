@@ -34,6 +34,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - LYRICSYNC_ENV=local
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -54,6 +55,7 @@ services:
       - REDIS_URL=${REDIS_URL}
       - CELERY_BROKER_URL=${CELERY_BROKER_URL}
       - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - LYRICSYNC_ENV=local
     volumes:
       - ./backend:/app
     depends_on:

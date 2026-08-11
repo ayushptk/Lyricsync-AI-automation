@@ -52,6 +52,11 @@ def _recover_stale_jobs():
 
 @asynccontextmanager
 async def lifespan(app):
+    print("\n" + "="*50)
+    print("🚀 NEW IMAGE LOADING RUNNING - 8/10 5:35 PM")
+    print("="*50 + "\n")
+    logger.info("🚀 NEW IMAGE LOADING RUNNING - 8/10 5:35 PM")
+    
     # Startup: recover orphaned jobs
     _recover_stale_jobs()
     yield
@@ -90,7 +95,7 @@ async def sqlalchemy_exception_handler(request, exc):
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"], # Update in production
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"], # Update in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -107,6 +112,10 @@ app.include_router(projects_router)
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "FastAPI is running"}
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 @app.post("/process-audio/")
 def process_audio(file_url: str):

@@ -97,7 +97,7 @@ export default function RegisterPage() {
                 exit={{ opacity: 0, height: 0 }}
                 className="text-[13px] text-red-400 font-medium"
               >
-                Registration failed. This user may already exist.
+                {(registerMutation.error as any)?.response?.data?.detail || registerMutation.error?.message || "Registration failed. Please try again."}
               </motion.p>
             )}
           </AnimatePresence>

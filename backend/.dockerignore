@@ -8,3 +8,21 @@ __pycache__
 *.pyo
 *.pyd
 .pytest_cache
+
+# Never bake cookie files into the image — always fetch from Secrets Manager at runtime
+cookies.txt
+*.cookies.txt
+youtube-cookies.txt
+*.txt
+!requirements.txt
+
+# Test/debug media and scripts — not needed in the container
+*.mp4
+*.webm
+*.wav
+*.mp3
+test*.py
+test_result.log
+
+# Avoid baking dev secrets
+.env.*

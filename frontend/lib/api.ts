@@ -2,12 +2,14 @@ import axios from 'axios';
 import { useAuthStore } from './store';
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
+  // baseURL is intentionally removed so requests hit the Next.js rewrite (/api/v1/...)
   withCredentials: true, // For HttpOnly cookies
   headers: {
     'Content-Type': 'application/json',
   },
 });
+
+console.log("Using Next.js proxy rewrite for API calls");
 
 let isRefreshing = false;
 let failedQueue: any[] = [];
@@ -51,8 +53,13 @@ api.interceptors.response.use(
       isRefreshing = true;
       
       try {
-        // Attempt to refresh the token
-        await api.post('/api/v1/auth/refresh');
+        // Attempt to refresh the token using raw axios to avoid interceptor loop
+        await axios.post('/api/v1/auth/refresh', {}, {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
         processQueue(null);
         return api(originalRequest); // Retry the original request
       } catch (err) {

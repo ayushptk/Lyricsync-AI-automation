@@ -40,3 +40,21 @@ ehthumbs.db
 Thumbs.db
 backend/tools/
 backend/.whisperx_cache/
+cookies.txt
+*.cookies.txt
+backend/youtube-cookies.txt
+
+# N8N
+n8nfiles/
+
+# Media files
+*.mp4
+*.webm
+*.mkv
+*.avi
+*.mp3
+
+# Temp files
+backend/bgutil_metadata.txt
+backend/ytdlp_help.txt
+backend/task-definition.json

@@ -113,13 +113,15 @@ class SubtitleGenerator:
             font_size = 86
             margin_v = 400
             margin_h = 40
-            outline = 4
+            outline = 0
+            shadow = 6
         else:
             play_res_x, play_res_y = 1920, 1080
-            font_size = 64
+            font_size = 80
             margin_v = 80
             margin_h = 80
-            outline = 2
+            outline = 0
+            shadow = 4
             
         # ASS Karaoke colour guide:
         # PrimaryColour   = highlighted text (currently singing) → bright yellow &H0000FFFF
@@ -141,7 +143,7 @@ PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Georgia,{font_size},{primary_colour},{secondary_colour},&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,{outline},1,5,{margin_h},{margin_h},{margin_v},1
+Style: Default,Permanent Marker,{font_size},{primary_colour},{secondary_colour},&H00000000,&H99000000,1,0,0,0,100,100,0,0,1,{outline},{shadow},5,{margin_h},{margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

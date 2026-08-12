@@ -4,6 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { Button } from "@/app/components/ui/Button";
 import { Play, Pause, SkipBack, Monitor, Smartphone, Download, Settings, ChevronLeft, Type } from "lucide-react";
+import { Permanent_Marker } from "next/font/google";
+
+const permanentMarker = Permanent_Marker({
+  weight: "400",
+  subsets: ["latin"],
+});
 
 export default function StudioEditor() {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -61,7 +67,7 @@ export default function StudioEditor() {
             className={`relative bg-black rounded-lg shadow-2xl overflow-hidden transition-all duration-500 flex items-center justify-center ring-1 ring-white/10 ${aspectRatio === "16:9" ? "w-full max-w-4xl aspect-video" : "h-full aspect-[9/16]"}`}
           >
             {/* Mock Video Background */}
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 via-purple-900/40 to-black"></div>
+            <div className="absolute inset-0 bg-[url('/karaoke_bg.png')] bg-cover bg-center"></div>
             
             {/* Mock Visualizer Waveform Background */}
             <div className="absolute bottom-0 left-0 w-full h-1/2 flex items-end justify-center gap-1 p-8 opacity-20">
@@ -72,7 +78,12 @@ export default function StudioEditor() {
 
             {/* Rendered Text */}
             <div className="z-10 text-center px-8">
-              <h1 className="font-heading font-black text-4xl md:text-5xl uppercase text-white drop-shadow-lg tracking-tight">
+              <h1 
+                className={`text-4xl md:text-6xl uppercase text-white tracking-wider ${permanentMarker.className}`}
+                style={{
+                  textShadow: "2px 2px 4px rgba(0, 0, 0, 0.8), 0px 0px 10px rgba(0, 0, 0, 0.5)"
+                }}
+              >
                 {lyrics[0].text}
               </h1>
             </div>
@@ -168,6 +179,7 @@ export default function StudioEditor() {
               <div>
                 <label className="text-xs text-zinc-500 mb-1 block">Font Family</label>
                 <select className="w-full bg-black/50 border border-white/10 rounded-md h-9 text-sm px-2 text-zinc-300">
+                  <option>Permanent Marker</option>
                   <option>Inter</option>
                   <option>Outfit (Heading)</option>
                   <option>Bebas Neue</option>

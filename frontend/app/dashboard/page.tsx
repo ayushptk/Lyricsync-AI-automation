@@ -83,6 +83,32 @@ export default function DashboardPage() {
     }
   });
 
+  const automationMutation = useMutation({
+    mutationFn: async ({ youtubeUrl }: { youtubeUrl: string }) => {
+      const response = await api.post("/api/automation/youtube", { 
+        youtube_url: youtubeUrl
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setUrl("");
+      if (data.success) {
+        toast.success(data.message || "Automation started!");
+      } else {
+        toast.error(data.message || "Automation failed");
+      }
+    },
+    onError: (error: any) => {
+      const errorMsg = typeof error?.response?.data?.detail === 'string' 
+        ? error.response.data.detail 
+        : error?.response?.data?.detail?.[0]?.msg
+        || error?.response?.data?.message
+        || error.message 
+        || "An unexpected error occurred.";
+      toast.error(`Automation failed: ${errorMsg}`);
+    }
+  });
+
   const deleteMutation = useMutation({
     mutationFn: async (projectId: string) => {
       await api.delete(`/api/v1/projects/${projectId}`);
@@ -103,6 +129,13 @@ export default function DashboardPage() {
     e.preventDefault();
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
       ingestMutation.mutate({ youtubeUrl: url, ratio: aspectRatio });
+    }
+  };
+
+  const handleAutomationSubmit = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      automationMutation.mutate({ youtubeUrl: url });
     }
   };
 
@@ -128,7 +161,9 @@ export default function DashboardPage() {
                 aspectRatio={aspectRatio}
                 setAspectRatio={setAspectRatio}
                 onSubmit={handleSubmit}
+                onAutomationSubmit={handleAutomationSubmit}
                 isPending={ingestMutation.isPending}
+                isAutomationPending={automationMutation.isPending}
               />
             </div>
 

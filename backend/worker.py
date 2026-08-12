@@ -232,8 +232,14 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 step_name="YouTube Download"
             )
             metadata.update(download_result)
+            
+            youtube_title = metadata.get('title', 'Unknown')
+            if job.project and youtube_title != 'Unknown':
+                job.project.title = youtube_title
+                db.commit()
+                
             _safe_update_job(db, job, progress=15,
-                             log_msg=f"Download complete. Title: {metadata.get('title', 'Unknown')}")
+                             log_msg=f"Download complete. Title: {youtube_title}")
         except StepTimeoutError as e:
             _safe_update_job(db, job, status="failed", progress=15,
                              error_msg=f"Download timed out: {str(e)}")

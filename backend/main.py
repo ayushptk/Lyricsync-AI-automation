@@ -13,6 +13,7 @@ from routes.transcription import router as transcription_router
 from routes.video import router as video_router
 from routes.jobs import router as jobs_router
 from routes.projects import router as projects_router
+from routes.automation import router as automation_router
 
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -108,6 +109,7 @@ app.include_router(transcription_router)
 app.include_router(video_router)
 app.include_router(jobs_router)
 app.include_router(projects_router)
+app.include_router(automation_router)
 
 @app.get("/")
 def read_root():

@@ -10,10 +10,12 @@ interface CreateProjectCardProps {
   aspectRatio: string;
   setAspectRatio: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onAutomationSubmit: (e: React.MouseEvent) => void;
   isPending: boolean;
+  isAutomationPending: boolean;
 }
 
-export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, onSubmit, isPending }: CreateProjectCardProps) {
+export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, onSubmit, onAutomationSubmit, isPending, isAutomationPending }: CreateProjectCardProps) {
   const [isFocused, setIsFocused] = useState(false);
 
   // Basic youtube url validation for UI feedback
@@ -64,7 +66,7 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               required
-              disabled={isPending}
+              disabled={isPending || isAutomationPending}
             />
 
             <AnimatePresence>
@@ -118,7 +120,7 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
           </div>
           
           <AnimatePresence>
-            {showSuccess && !isPending && (
+            {showSuccess && !isPending && !isAutomationPending && (
               <motion.div 
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
@@ -133,40 +135,66 @@ export function CreateProjectCard({ url, setUrl, aspectRatio, setAspectRatio, on
             )}
           </AnimatePresence>
 
-          <button
-            type="submit"
-            disabled={!showSuccess || isPending}
-            className={`relative w-full h-[52px] rounded-xl font-medium flex items-center justify-center transition-all duration-300 overflow-hidden ${
-              showSuccess && !isPending
-                ? 'bg-accent hover:bg-accent-hover text-white shadow-[0_4px_20px_-4px_rgba(202,138,4,0.5)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(202,138,4,0.6)] active:translate-y-0 active:scale-[0.98]' 
-                : 'bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed'
-            }`}
-          >
-            {isPending ? (
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1">
-                  <motion.div 
-                    animate={{ scaleY: [1, 2, 1] }} 
-                    transition={{ repeat: Infinity, duration: 1, delay: 0 }}
-                    className="w-1 h-3 bg-white/80 rounded-full" 
-                  />
-                  <motion.div 
-                    animate={{ scaleY: [1, 2.5, 1] }} 
-                    transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
-                    className="w-1 h-3 bg-white/80 rounded-full" 
-                  />
-                  <motion.div 
-                    animate={{ scaleY: [1, 1.5, 1] }} 
-                    transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
-                    className="w-1 h-3 bg-white/80 rounded-full" 
-                  />
+          <div className="flex flex-col gap-3">
+            <button
+              type="submit"
+              disabled={!showSuccess || isPending || isAutomationPending}
+              className={`relative w-full h-[52px] rounded-xl font-medium flex items-center justify-center transition-all duration-300 overflow-hidden ${
+                showSuccess && !isPending && !isAutomationPending
+                  ? 'bg-accent hover:bg-accent-hover text-white shadow-[0_4px_20px_-4px_rgba(202,138,4,0.5)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(202,138,4,0.6)] active:translate-y-0 active:scale-[0.98]' 
+                  : 'bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed'
+              }`}
+            >
+              {isPending ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <motion.div 
+                      animate={{ scaleY: [1, 2, 1] }} 
+                      transition={{ repeat: Infinity, duration: 1, delay: 0 }}
+                      className="w-1 h-3 bg-white/80 rounded-full" 
+                    />
+                    <motion.div 
+                      animate={{ scaleY: [1, 2.5, 1] }} 
+                      transition={{ repeat: Infinity, duration: 1, delay: 0.2 }}
+                      className="w-1 h-3 bg-white/80 rounded-full" 
+                    />
+                    <motion.div 
+                      animate={{ scaleY: [1, 1.5, 1] }} 
+                      transition={{ repeat: Infinity, duration: 1, delay: 0.4 }}
+                      className="w-1 h-3 bg-white/80 rounded-full" 
+                    />
+                  </div>
+                  <span>Preparing your project...</span>
                 </div>
-                <span>Preparing your project...</span>
-              </div>
-            ) : (
-              <span>Start Processing</span>
-            )}
-          </button>
+              ) : (
+                <span>Start Processing</span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={onAutomationSubmit}
+              disabled={!showSuccess || isPending || isAutomationPending}
+              className={`relative w-full h-[52px] rounded-xl font-medium flex items-center justify-center transition-all duration-300 overflow-hidden ${
+                showSuccess && !isPending && !isAutomationPending
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_4px_20px_-4px_rgba(79,70,229,0.5)] hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-4px_rgba(79,70,229,0.6)] active:translate-y-0 active:scale-[0.98]' 
+                  : 'bg-white/5 text-slate-500 border border-white/5 cursor-not-allowed'
+              }`}
+            >
+              {isAutomationPending ? (
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1">
+                    <motion.div animate={{ scaleY: [1, 2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0 }} className="w-1 h-3 bg-white/80 rounded-full" />
+                    <motion.div animate={{ scaleY: [1, 2.5, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1 h-3 bg-white/80 rounded-full" />
+                    <motion.div animate={{ scaleY: [1, 1.5, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1 h-3 bg-white/80 rounded-full" />
+                  </div>
+                  <span>Starting automation...</span>
+                </div>
+              ) : (
+                <span>Generate & Upload to YouTube</span>
+              )}
+            </button>
+          </div>
         </form>
       </div>
     </motion.div>

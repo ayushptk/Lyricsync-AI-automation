@@ -266,14 +266,12 @@ def download_audio(
 
         # Player client selection — tv_embedded first (no PO Token needed from
         # datacenter IPs), then web/mweb with automatic PO Token via EJS/Deno.
-       "extractor_args": {
-    "youtube": {
-        "player_client": ["mweb"],
-    },
-    "youtubepot-bgutilhttp": {
-        "base_url": "http://127.0.0.1:4416",
-    },
-},
+        # Adding android and ios as they are more resilient to 403 Forbidden blocks.
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "tv_embedded", "web", "mweb"],
+            },
+        },
 
         # Allow yt-dlp to fetch its EJS JavaScript challenge solver from GitHub.
         # This is used by Deno to solve YouTube's PO Token challenges for the

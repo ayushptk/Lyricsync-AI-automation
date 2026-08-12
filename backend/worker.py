@@ -254,33 +254,37 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             return  # Can't continue without the audio file
         
         # =====================================================================
-        # STEP 2: Preprocess audio (Normalize, 16kHz, Trim)
+        # STEP 2: Prepare audio for Demucs (44100Hz Stereo WAV)
         # =====================================================================
+        # IMPORTANT: We only do format conversion here — no loudnorm, no trim,
+        # no resampling to 16kHz.  Demucs htdemucs_ft was trained on 44100Hz
+        # stereo.  Feeding it 16kHz mono causes internal upsampling that
+        # introduces metallic/watery artifacts in the output.
         try:
-            from services.audio_preprocess import preprocess_audio
+            from services.audio_preprocess import prepare_for_separation
             
-            logger.info(f"[{job_id}] Step 2/8: Preprocessing audio...")
-            preprocess_stats = run_with_timeout(
-                preprocess_audio, args=(metadata["file_path"],),
+            logger.info(f"[{job_id}] Step 2/8: Preparing audio for Demucs (44100Hz stereo)...")
+            
+            demucs_input_path = run_with_timeout(
+                prepare_for_separation, args=(metadata["file_path"],),
                 timeout_seconds=STEP_TIMEOUTS["preprocess"],
-                step_name="Audio Preprocess"
+                step_name="Audio Preparation (Demucs)"
             )
-            metadata["preprocessed_file_path"] = preprocess_stats["final_file_path"]
-            metadata["trim_stats"] = preprocess_stats
+            metadata["preprocessed_file_path"] = demucs_input_path
             _safe_update_job(db, job, progress=25,
-                             log_msg=f"Preprocess complete. Duration: {preprocess_stats.get('trimmed_duration', '?')}s")
+                             log_msg=f"Audio prepared for separation (44100Hz stereo WAV).")
         except StepTimeoutError as e:
             _safe_update_job(db, job, status="failed", progress=25,
-                             error_msg=f"Preprocess timed out: {str(e)}")
+                             error_msg=f"Audio preparation timed out: {str(e)}")
             return
         except Exception as e:
             tb = traceback.format_exc()
-            err_text = f"Preprocess failed: {str(e)}"
+            err_text = f"Audio preparation failed: {str(e)}"
             if tb and "Traceback Details:" not in str(e):
                 err_text += f"\n\nTraceback Details:\n{tb}"
             _safe_update_job(db, job, status="failed", progress=25,
                              error_msg=err_text)
-            return  # Can't continue without preprocessed audio audio
+            return  # Can't continue without prepared audio
         
         # =====================================================================
         # STEP 3: Separate Tracks (Demucs) — GRACEFUL FALLBACK
@@ -388,6 +392,30 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                              log_msg=f"Loudness normalization skipped ({type(e).__name__}: {str(e)[:150]}). Using original backing track.")
         
         # =====================================================================
+        # STEP 5.5: Convert vocal stem to Whisper-optimal format (16kHz Mono)
+        # =====================================================================
+        # Demucs outputs vocals at 44100Hz stereo.  Faster-Whisper expects
+        # 16000Hz mono — its internal resampler works but a dedicated FFmpeg
+        # pass is faster, higher quality, and also applies loudnorm so Whisper
+        # receives a consistent signal level from quiet vocal stems.
+        whisper_vocals_path = vocals_path  # Fallback: use raw Demucs output
+        try:
+            from services.audio_preprocess import prepare_for_whisper
+            
+            logger.info(f"[{job_id}] Step 5.5: Converting vocals to Whisper format (16kHz mono)...")
+            
+            whisper_vocals_path = run_with_timeout(
+                prepare_for_whisper, args=(vocals_path,),
+                timeout_seconds=120,  # Should complete in <30s
+                step_name="Vocal→Whisper Format Conversion"
+            )
+            _safe_update_job(db, job, progress=65,
+                             log_msg="Vocals converted to 16kHz mono for transcription.")
+        except Exception as e:
+            logger.warning(f"[{job_id}] Vocal format conversion failed: {e}. Using raw Demucs output for Whisper.")
+            whisper_vocals_path = vocals_path  # Safe fallback
+        
+        # =====================================================================
         # STEP 6: Transcription (Faster-Whisper) — OPTIONAL
         # =====================================================================
         ass_path = None
@@ -397,11 +425,11 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
             
             logger.info(f"[{job_id}] Step 6/8: Transcribing with Faster-Whisper...")
             
-            # Start progress heartbeat: gradually move from 70% → 79%
+            # Start progress heartbeat: gradually move from 65% → 79%
             # Faster-Whisper on CPU can take 5-15 minutes, so we keep the UI alive
             heartbeat_stop_tx = _start_progress_heartbeat(
                 db, job,
-                start_progress=70,
+                start_progress=65,
                 end_progress=80,
                 interval_seconds=20,
                 total_expected_seconds=1200  # Expected ~20 min on CPU
@@ -411,8 +439,9 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 transcriber = FasterWhisperTranscriber()
                 return transcriber.transcribe(audio_path)
             
+            # Use whisper_vocals_path (16kHz mono) — NOT the raw Demucs 44.1kHz stereo
             transcription_path = run_with_timeout(
-                _run_transcription, args=(vocals_path,),
+                _run_transcription, args=(whisper_vocals_path,),
                 timeout_seconds=STEP_TIMEOUTS["transcription"],
                 step_name="Transcription (Faster-Whisper)"
             )
@@ -422,13 +451,39 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                              log_msg="Transcription complete.")
             
             # -----------------------------------------------------------------
+            # STEP 6.5: Lyric Post-Processing (confidence filter + correction)
+            # -----------------------------------------------------------------
+            # Applies conservative cleaning to the raw Whisper output:
+            #   - Drops confirmed non-speech segments (no_speech_prob > 0.85)
+            #   - Detects repetition hallucination patterns and drops them
+            #   - Flags low-confidence words (prob < 0.35) without removing them
+            #   - Applies minimal spelling corrections from an explicit dictionary
+            #   - Reverts ALL corrections if > 30% of words are changed
+            # This step NEVER adds words or invents lyrics.
+            processed_transcription_path = transcription_path  # Fallback to raw
+            try:
+                from services.lyric_processor import process_transcription_file
+                
+                logger.info(f"[{job_id}] Step 6.5: Post-processing lyrics...")
+                processed_transcription_path = process_transcription_file(transcription_path)
+                _safe_update_job(db, job, progress=82,
+                                 log_msg="Lyric post-processing complete.")
+            except Exception as e:
+                logger.warning(
+                    f"[{job_id}] Lyric post-processing failed: {e}. "
+                    f"Using raw transcription for subtitles."
+                )
+                processed_transcription_path = transcription_path
+
+            # -----------------------------------------------------------------
             # STEP 7: Generate Subtitles (SRT, LRC, ASS) — DEPENDS ON STEP 6
             # -----------------------------------------------------------------
             try:
                 from services.subtitle_generator import SubtitleGenerator
                 
                 logger.info(f"[{job_id}] Step 7/8: Generating subtitles...")
-                sub_generator = SubtitleGenerator(transcription_path)
+                # Use the processed transcription (with corrections + hallucination filter)
+                sub_generator = SubtitleGenerator(processed_transcription_path)
                 srt_path = sub_generator.generate_srt()
                 lrc_path = sub_generator.generate_lrc()
                 ass_path = sub_generator.generate_ass(aspect_ratio=job.aspect_ratio)

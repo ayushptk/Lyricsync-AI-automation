@@ -9,9 +9,22 @@ logger = logging.getLogger(__name__)
 # Maximum audio duration we'll attempt vocal separation on (seconds)
 MAX_DURATION_FOR_SEPARATION = 600  # 10 minutes
 
-# Strategy selection: "fast" (FFmpeg only, ~5 seconds), "balanced" (htdemucs, ~3-8 min on CPU)
+# Strategy selection: "fast" (FFmpeg only, ~5 seconds), "balanced" (htdemucs_ft, ~5-20 min on CPU)
 # Controlled via env var; defaults to "balanced"
 SEPARATION_STRATEGY = os.getenv("VOCAL_SEPARATION_STRATEGY", "balanced").lower()
+
+# Demucs model selection.
+# htdemucs_ft: Fine-tuned 4-stem model, BEST for karaoke vocal removal.
+#              4-stem = drums + bass + other + vocals.
+#              The backing track = sum of 3 stems (not 5 like htdemucs_6s).
+#              Less accumulated prediction error = cleaner instrumental.
+# htdemucs:   Base 4-stem model.  Faster than _ft, slightly lower quality.
+#             Use as fallback if htdemucs_ft download fails.
+# htdemucs_6s: 6-stem model. Adds guitar + piano stems.
+#              Use ONLY if you need the piano stem for piano mode.
+#              NOT recommended for karaoke — more stems = more artifacts.
+DEMUCS_MODEL = os.getenv("DEMUCS_MODEL", "htdemucs_ft")
+DEMUCS_FALLBACK_MODEL = os.getenv("DEMUCS_FALLBACK_MODEL", "htdemucs")
 
 
 class DemucsSeparationError(Exception):
@@ -146,9 +159,14 @@ class DemucsSeparator:
       Completes in ~5 seconds. Good enough for karaoke where you mostly need
       the vocal melody line for transcription.
       
-    - "balanced" mode: Uses htdemucs (single hybrid transformer model).
-      ~3-5x faster than the old mdx_extra (which ran 4 sub-models).
-      Still takes a few minutes on CPU but produces better separation quality.
+    - "balanced" mode: Uses htdemucs_ft (fine-tuned hybrid transformer model).
+      htdemucs_ft is the best model for karaoke because:
+        1. It is a 4-stem model (drums, bass, other, vocals).
+           The backing track = 3 stem predictions, NOT 5 like htdemucs_6s.
+           Fewer predictions = less accumulated artifact error.
+        2. It is fine-tuned specifically to minimize vocal bleed into instruments.
+        3. It operates at 44100Hz stereo (the model's native format).
+      Falls back to htdemucs (base 4-stem) if htdemucs_ft download fails.
     """
     
     def __init__(self, model_name: str = None, strategy: str = None):
@@ -157,21 +175,26 @@ class DemucsSeparator:
         
         Args:
             model_name: Demucs model name (only used in "balanced" mode).
-                        Defaults to "htdemucs" which is much faster than "mdx_extra".
+                        Defaults to DEMUCS_MODEL env var (htdemucs_ft).
             strategy: "fast" or "balanced". Defaults to SEPARATION_STRATEGY env var.
         """
         self.strategy = strategy or SEPARATION_STRATEGY
         
         if self.strategy == "balanced":
             # Only load heavy ML dependencies when actually needed
-            self.model_name = model_name or "htdemucs_6s"
+            self.model_name = model_name or DEMUCS_MODEL
             self._model = None
             self._device = None
         
         logger.info(f"VocalSeparator initialized with strategy='{self.strategy}'")
     
     def _load_model(self):
-        """Lazily load the Demucs model (only for balanced strategy)."""
+        """Lazily load the Demucs model (only for balanced strategy).
+        
+        Tries htdemucs_ft first. Falls back to htdemucs if download fails.
+        This ensures we always get a working model even in air-gapped or
+        slow-network environments.
+        """
         if self._model is not None:
             return
         
@@ -208,9 +231,24 @@ class DemucsSeparator:
             self._model = get_model(self.model_name)
             self._model.cpu()
             self._model.eval()
-            logger.info(f"Demucs model loaded. Sources: {self._model.sources}")
+            logger.info(f"Demucs model '{self.model_name}' loaded. Sources: {self._model.sources}")
         except Exception as e:
-            raise DemucsSeparationError(f"Model load failed: {str(e)}")
+            # If the primary model fails (e.g. download error), try fallback
+            if self.model_name != DEMUCS_FALLBACK_MODEL:
+                logger.warning(
+                    f"Failed to load Demucs model '{self.model_name}': {e}. "
+                    f"Falling back to '{DEMUCS_FALLBACK_MODEL}'."
+                )
+                self.model_name = DEMUCS_FALLBACK_MODEL
+                try:
+                    self._model = get_model(self.model_name)
+                    self._model.cpu()
+                    self._model.eval()
+                    logger.info(f"Fallback Demucs model '{self.model_name}' loaded. Sources: {self._model.sources}")
+                except Exception as fallback_err:
+                    raise DemucsSeparationError(f"Both primary and fallback Demucs models failed: {fallback_err}") from fallback_err
+            else:
+                raise DemucsSeparationError(f"Model load failed: {str(e)}") from e
     
     def _separate_with_demucs(self, input_path: str, vocals_path: str, backing_path: str, piano_path: str) -> tuple[str, str, Optional[str]]:
         """ML-based vocal separation using htdemucs (balanced mode)."""
@@ -240,11 +278,11 @@ class DemucsSeparator:
         with torch.no_grad():
             sources = apply_model(
                 self._model, wav[None],
-                shifts=1,       # Restored to 1 for better quality
-                split=True,
-                overlap=0.25,   # Restored to 0.25 for better quality (smoother transitions)
+                shifts=1,       # 1 shift for better quality (random shift ensemble)
+                split=True,     # Split long audio into segments
+                overlap=0.25,   # 25% overlap for smooth segment transitions
                 progress=False,
-                segment=None,
+                segment=None,   # Auto-select segment length based on available memory
             )[0]
         
         # Reverse normalization
@@ -304,11 +342,16 @@ class DemucsSeparator:
         """
         Separates audio into vocals (for transcription) and backing track (only vocals removed).
         
+        IMPORTANT: Input audio must be 44100Hz stereo WAV (use prepare_for_separation() first).
+        Do NOT feed 16kHz mono to this function — it will cause the model to upsample
+        and introduce metallic artifacts.
+        
         Uses the configured strategy:
         - "fast": FFmpeg-based extraction (~5 seconds) (Note: Cannot remove drums, only vocals)
-        - "balanced": htdemucs ML model (~3-8 minutes on CPU) (Removes vocals)
+        - "balanced": htdemucs_ft ML model (~5-20 minutes on CPU) (Best karaoke separation)
         
         Returns a tuple: (vocals_path, backing_path, piano_path)
+        piano_path is None unless the model supports a 'piano' stem (htdemucs_6s only).
         """
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"Input file not found: {input_path}")

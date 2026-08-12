@@ -252,14 +252,24 @@ def download_audio(
     ffmpeg_exe = os.getenv("FFMPEG_LOCATION") or imageio_ffmpeg.get_ffmpeg_exe()
 
     ydl_opts: Dict[str, Any] = {
-        # Audio quality
-        "format": "bestaudio/best",
+        # Audio quality — prefer best audio in native format.
+        # YouTube serves audio as AAC/M4A or Opus/WebM.
+        # "bestaudio/best" selects the highest bitrate stream.
+        # We prefer m4a (AAC) because it is widely compatible with
+        # all downstream tools (FFmpeg, Demucs, librosa).
+        # IMPORTANT: We do NOT transcode to MP3 here — MP3 is lossy,
+        # and transcoding AAC→MP3 is a lossy-to-lossy generation that
+        # degrades audio quality before Demucs even sees it.
+        # The postprocessor remuxes to m4a (copy, no re-encode) if needed.
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": output_template,
         "postprocessors": [
             {
+                # Remux to m4a container — copy codec, no transcoding.
+                # This is lossless: only the container changes, not the audio data.
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
+                "preferredcodec": "m4a",
+                "preferredquality": "0",  # 0 = copy (no re-encode when possible)
             }
         ],
         "ffmpeg_location": ffmpeg_exe,
@@ -310,7 +320,7 @@ def download_audio(
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-        expected_file_path = os.path.join(output_dir, f"{file_id}.mp3")
+        expected_file_path = os.path.join(output_dir, f"{file_id}.m4a")
 
         if not os.path.exists(expected_file_path):
             # The postprocessor may have chosen a different extension in edge cases.

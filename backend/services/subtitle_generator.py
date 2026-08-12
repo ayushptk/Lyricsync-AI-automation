@@ -121,6 +121,15 @@ class SubtitleGenerator:
             margin_h = 80
             outline = 2
             
+        # ASS Karaoke colour guide:
+        # PrimaryColour   = highlighted text (currently singing) → bright yellow &H0000FFFF
+        # SecondaryColour = unhighlighted text (not yet sung)    → white &H00FFFFFF
+        # OutlineColour   = text outline                         → dark/black &H00000000
+        # The \kf tag fills the highlight left-to-right progressively
+        # (unlike \k which jumps block-by-block).
+        primary_colour = "&H0000FFFF"    # Yellow highlight (BGR: 00FFFF = yellow in ASS)
+        secondary_colour = "&H00FFFFFF"  # White unhighlighted text
+
         ass_header = f"""[Script Info]
 Title: Karaoke Generated
 ScriptType: v4.00+
@@ -132,7 +141,7 @@ PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Georgia,{font_size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,{outline},0,5,{margin_h},{margin_h},{margin_v},1
+Style: Default,Georgia,{font_size},{primary_colour},{secondary_colour},&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,{outline},1,5,{margin_h},{margin_h},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -149,7 +158,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start_time = _format_time_ass(segment.get("start", 0.0))
             end_time = _format_time_ass(segment.get("end", 0.0))
             
-            # Karaoke tags: {\k<duration_in_centiseconds>}
+            # Karaoke tags: {\kf<duration_in_centiseconds>}
+            # \kf = karaoke fill — animates highlight LEFT-TO-RIGHT progressively
+            # across the word as it is sung.  This is the smooth karaoke effect.
+            # \k  = block highlight — word turns colour all at once (not smooth).
             karaoke_text = ""
             for word in segment.get("words", []):
                 w_start = word.get("start", 0.0)
@@ -157,7 +169,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # Centiseconds
                 duration_cs = max(0, int(round((w_end - w_start) * 100)))
                 w_text = word.get("word", "")
-                karaoke_text += f"{{\\k{duration_cs}}}{w_text} "
+                karaoke_text += f"{{\\kf{duration_cs}}}{w_text} "
                 
             karaoke_text = karaoke_text.strip()
             # Dialogue: 0,0:00:00.00,0:00:00.00,Default,,0,0,0,,Text

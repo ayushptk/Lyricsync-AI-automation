@@ -1,0 +1,25 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# YouTube authentication
+cookies.txt
+*.cookie
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+
+# Generated files
+*.wav
+*.mp3
+*.mp4
+*.webm
+
+# yt-dlp
+yt-dlp_help.txt

@@ -135,10 +135,11 @@ class VideoRenderer:
 
         ffmpeg_cmd.extend([
             "-c:v", self.video_codec,
-            "-preset", "fast",
+            "-preset", "medium",      # Better compression quality vs 'fast'
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
-            "-b:a", "192k",
+            "-b:a", "256k",           # 256k minimum for transparent music quality
+                                      # 192k was audibly lossy on cymbals/sustained notes
             "-shortest",
             output_mp4_path
         ])

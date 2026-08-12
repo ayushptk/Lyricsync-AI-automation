@@ -1,5 +1,7 @@
 # Amazon ECS Task Definition
 
+![Task Definitions](./Task%20Definations.png)
+
 ## Project
 
 **LyricSync AI SaaS**

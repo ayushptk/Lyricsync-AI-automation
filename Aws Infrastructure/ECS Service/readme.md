@@ -1,5 +1,7 @@
 # Amazon ECS Services
 
+![ECS Service](./image.png)
+
 ## LyricSync AI SaaS
 
 Amazon Elastic Container Service (Amazon ECS) Service is used to run, maintain, and manage the containerized workloads of LyricSync AI on AWS.

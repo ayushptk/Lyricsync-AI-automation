@@ -1,5 +1,7 @@
 # RDS PostgreSQL — LyricSync AI
 
+![RDS PostgreSQL](./image.png)
+
 ## 1. What is RDS PostgreSQL?
 
 Amazon RDS for PostgreSQL is the managed relational database used by LyricSync AI for production data.

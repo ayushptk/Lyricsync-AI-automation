@@ -1,5 +1,7 @@
 # Amazon S3 Configuration
 
+![Bucket Overview](./S3%20Bucket.png)
+
 ## Project
 
 **LyricSync AI SaaS**
@@ -299,8 +301,6 @@ Using Amazon S3 provides several advantages:
 - Production-ready architecture
 
 
-# Screenshots
 
-![Bucket Overview](./S3%20Bucket.png)
 
 

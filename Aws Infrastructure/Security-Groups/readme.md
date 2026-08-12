@@ -1,5 +1,7 @@
 # Amazon Security Groups
 
+![Security Groups](./image.png)
+
 ## Project
 
 **LyricSync AI SaaS**
@@ -171,7 +173,4 @@ Examples include:
 ## Stateful Firewall
 
 Security Groups automatically allow return traffic for approved connections, reducing firewall complexity.
-
-# Screenshots
-
-![Security Groups](./image.png)
+

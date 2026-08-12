@@ -1,5 +1,7 @@
 # Application Load Balancer (ALB) — LyricSync AI SaaS
 
+![Load Balancer](./LoadBalancer.png)
+
 ## 1. Overview
 
 An Application Load Balancer (ALB) is the public HTTP/HTTPS entry point for the LyricSync AI backend.

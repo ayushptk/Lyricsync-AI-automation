@@ -1,5 +1,7 @@
 # IAM Configuration
 
+![IAM Dashboard](./IAM.png)
+
 ## Project
 LyricSync AI SaaS
 
@@ -66,6 +68,3 @@ This will later be used by AWS services such as:
 
 ---
 
-## Screenshots
-
-![IAM Dashboard](./IAM.png)

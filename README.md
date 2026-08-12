@@ -309,28 +309,32 @@ docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/ytsaas-backend:latest
 Below is the actual architectural deployment and configuration evidence for LyricSync.
 
 ### VPC & Networking
-![VPC Resource Map](Aws%20Infrastructure/vpc/Vpcresoucesmap.png)
-![VPC Architecture](Aws%20Infrastructure/vpc/vpc%20arch.png)
+![VPC Resource Map](./Aws%20Infrastructure/vpc/Vpcresoucesmap.png)
+![VPC Architecture](./Aws%20Infrastructure/vpc/vpc%20arch.png)
 
 ### IAM & Security
-![IAM Roles](Aws%20Infrastructure/Iam/IAM.png)
-![Security Groups](Aws%20Infrastructure/Security-Groups/image.png)
+![IAM Roles](./Aws%20Infrastructure/Iam/IAM.png)
+![Security Groups](./Aws%20Infrastructure/Security-Groups/image.png)
 
 ### Elastic Container Registry (ECR)
-![ECR Repositories](Aws%20Infrastructure/Elastic-Container-Registry(ECR)/Imagerepository.png)
-![Docker Images](Aws%20Infrastructure/Elastic-Container-Registry(ECR)/docker%20images.png)
+![ECR Repositories](./Aws%20Infrastructure/Elastic-Container-Registry%28ECR%29/Imagerepository.png)
+![Docker Images](./Aws%20Infrastructure/Elastic-Container-Registry%28ECR%29/docker%20images.png)
 
 ### Elastic Container Service (ECS)
-![ECS Cluster](Aws%20Infrastructure/Elastic-Container-services/Cluster.png)
-![ECS Service](Aws%20Infrastructure/ECS%20Service/image.png)
-![ECS Task Definition](Aws%20Infrastructure/ECS%20task%20Definations/Task%20Definations.png)
+![ECS Cluster](./Aws%20Infrastructure/Elastic-Container-services/Cluster.png)
+![ECS Service](./Aws%20Infrastructure/ECS%20Service/image.png)
+![ECS Task Definition](./Aws%20Infrastructure/ECS%20task%20Definations/Task%20Definations.png)
+
+### Application Load Balancer
+![Application Load Balancer](./Aws%20Infrastructure/Application%20Load%20Balancer/LoadBalancer.png)
+
+### Database (RDS PostgreSQL)
+![RDS PostgreSQL](./Aws%20Infrastructure/RDS%20PostgreSQL/image.png)
 
 ### Storage & CDN
-![S3 Bucket](Aws%20Infrastructure/S3%20Bucket/S3%20Bucket.png)
-![CloudFront](Aws%20Infrastructure/CloudFront/cloudfront.png)
+![S3 Bucket](./Aws%20Infrastructure/S3%20Bucket/S3%20Bucket.png)
+![CloudFront](./Aws%20Infrastructure/CloudFront/cloudfront.png)
 
 ### Automation
-![n8n Workflow](n8nfiles/n8nworkflow.png)
+![n8n Workflow](./n8nfiles/n8nworkflow.png)
 
----
-*Developed as a high-performance audio-visual processing platform.*

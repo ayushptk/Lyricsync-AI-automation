@@ -1,5 +1,8 @@
 # Amazon Elastic Container Registry (ECR)
 
+![Image Repository](./Imagerepository.png)
+![Docker Images](./docker%20images.png)
+
 ## Project
 
 **LyricSync AI SaaS**

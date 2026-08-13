@@ -262,16 +262,49 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ---
 
-## 🐳 Docker Deployment
+## 🐳 Docker Deployment & ECR
 
-To containerize the application for ECS deployment:
+The best and easiest way to run LyricSync locally is using **Docker Compose**. This will automatically spin up the entire stack: PostgreSQL, Redis, FastAPI backend, Celery worker, Flower monitoring, and the Next.js frontend.
+
+### 1. Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
+
+### 2. Environment Variables
+Ensure you have a `.env` file created in the root directory (or update the existing one) with the required values. At a minimum, you'll need:
+```env
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=ytsaas
+DATABASE_URL=postgresql://postgres:postgres@db:5432/ytsaas
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/0
+```
+
+### 3. Run the Stack
+From the root of the project, run:
+```bash
+docker-compose up --build
+```
+
+### 4. Access the Services
+Once all containers are running, you can access the various services at:
+- **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **FastAPI Backend / Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Flower (Celery Worker Monitoring)**: [http://localhost:5555](http://localhost:5555)
+
+---
+
+### ☁️ AWS ECR Push (Production)
+
+If you are containerizing the application for ECS deployment to AWS:
 
 ```bash
 # Build the images
 docker build -t ytsaas-backend ./backend
 docker build -t ytsaas-frontend ./frontend
 
-# Tag for AWS ECR
+# Tag for AWS ECR (Replace with your actual AWS Account ID)
 docker tag ytsaas-backend:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/ytsaas-backend:latest
 
 # Push to ECR

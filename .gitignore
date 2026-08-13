@@ -44,8 +44,7 @@ cookies.txt
 *.cookies.txt
 backend/youtube-cookies.txt
 
-# N8N
-n8nfiles/
+
 
 # Media files
 *.mp4

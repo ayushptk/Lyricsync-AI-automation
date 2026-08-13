@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/automation", tags=["automation"])
 
 class AutomationJobCreate(BaseModel):
-    youtube_url: HttpUrl
+    youtube_url: Optional[str] = None
+    url: Optional[str] = None
+    youtubeUrl: Optional[str] = None
+    
+    class Config:
+        extra = "allow"
 
 class AutomationJobStatusResponse(BaseModel):
     job_id: str
@@ -41,44 +46,83 @@ def trigger_youtube_automation(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Trigger the n8n automation webhook for a YouTube video.
+    Create a job under the logged-in user, start the processing pipeline,
+    and optionally trigger the n8n webhook for supplemental workflows (e.g. YouTube upload).
+    Returns job_id so the frontend can immediately track progress.
     """
-    url_str = str(request.youtube_url)
+    raw_url = request.youtube_url or request.youtubeUrl or request.url
+    
+    if not raw_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "MISSING_URL", "message": "Could not find URL in payload."}
+        )
+        
+    url_str = str(raw_url)
     
     if not validate_youtube_url(url_str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error_code": "INVALID_URL", "message": "Invalid YouTube URL provided."}
+            detail={"error_code": "INVALID_URL", "message": f"Invalid YouTube URL provided: {url_str}"}
         )
-        
+
+    # 1. Create Project under the LOGGED-IN user so the frontend can see it
+    project = Project(
+        user_id=current_user.id,
+        title="Automated Generation",
+        status="processing"
+    )
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    # 2. Create Job
+    job = Job(
+        project_id=project.id,
+        job_type="transcription",
+        status="queued",
+        aspect_ratio="16:9"
+    )
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+
+    # 3. Launch the processing pipeline in a background thread
+    thread = threading.Thread(
+        target=_run_ingest_in_thread,
+        args=(url_str, str(job.id)),
+        daemon=True,
+        name=f"auto-ingest-{job.id}"
+    )
+    thread.start()
+
+    job.worker_id = f"thread-{thread.name}"
+    db.commit()
+
+    # 4. Optionally trigger n8n webhook for supplemental work (e.g. YouTube upload after completion)
     n8n_webhook_url = os.environ.get("N8N_WEBHOOK_URL")
-    if not n8n_webhook_url:
-        raise HTTPException(status_code=500, detail="N8N_WEBHOOK_URL not configured in backend.")
-        
-    try:
-        req = urllib.request.Request(
-            n8n_webhook_url,
-            data=json.dumps({"youtube_url": url_str}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        with urllib.request.urlopen(req, timeout=5.0) as response:
-            if response.status not in (200, 201, 202):
-                logger.error(f"n8n returned status code {response.status}")
-                raise Exception("n8n returned non-2xx status")
-    except Exception as e:
-        logger.error(f"Failed to trigger n8n webhook: {e}")
-        # Return a safe error message to the frontend without exposing internal errors
-        return {
-            "success": False,
-            "status": "n8n_unavailable",
-            "message": "Automation service is currently unavailable"
-        }
+    if n8n_webhook_url:
+        def _fire_n8n():
+            try:
+                req = urllib.request.Request(
+                    n8n_webhook_url,
+                    data=json.dumps({"youtube_url": url_str, "job_id": str(job.id)}).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=5.0) as response:
+                    if response.status not in (200, 201, 202):
+                        logger.warning(f"n8n returned status code {response.status}")
+            except Exception as e:
+                logger.warning(f"Failed to trigger n8n webhook (non-critical): {e}")
+
+        threading.Thread(target=_fire_n8n, daemon=True, name="n8n-notify").start()
         
     return {
         "success": True,
         "status": "queued",
-        "message": "YouTube automation started"
+        "message": "YouTube automation started",
+        "job_id": str(job.id)
     }
 
 
@@ -90,13 +134,24 @@ def create_automation_job(
 ):
     """
     Submit a YouTube URL for background video generation.
+    Called by n8n workflow via the HTTP Request node.
     """
-    url_str = str(request.youtube_url)
+    raw_url = request.youtube_url or request.youtubeUrl or request.url
+    
+    if not raw_url:
+        logger.error(f"No URL found in n8n payload: {request.model_dump()}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error_code": "MISSING_URL", "message": "Could not find URL in payload."}
+        )
+        
+    # Strip leading '=' which n8n adds when an expression field is treated as a string literal
+    url_str = str(raw_url).lstrip("=").strip()
     
     if not validate_youtube_url(url_str):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"error_code": "INVALID_URL", "message": "Invalid YouTube URL provided."}
+            detail={"error_code": "INVALID_URL", "message": f"Invalid YouTube URL provided: {url_str}"}
         )
 
     # 1. Create Project

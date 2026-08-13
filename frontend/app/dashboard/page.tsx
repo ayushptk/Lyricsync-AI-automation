@@ -17,7 +17,7 @@ import { EmptyProjects } from "@/components/dashboard/EmptyProjects";
 import { Clock } from "lucide-react";
 import { motion } from "framer-motion";
 
-interface Job {
+export interface Job {
   id: string;
   project_id: string;
   job_type: string;
@@ -32,6 +32,8 @@ interface Job {
 export default function DashboardPage() {
   const [url, setUrl] = useState("");
   const [aspectRatio, setAspectRatio] = useState("16:9");
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const [isWaitingForAutoJob, setIsWaitingForAutoJob] = useState(false);
   const router = useRouter();
   const { user, isAuthenticated, isLoading } = useAuthStore();
 
@@ -57,7 +59,26 @@ export default function DashboardPage() {
   const totalJobs = jobsResponse?.total || 0;
   
   // Calculate stats
-  const processingJobs = jobs.filter(j => j.status === "processing" || j.status === "queued").length;
+  const processingJobs = jobs.filter(j => j.status === "processing" || j.status === "queued");
+
+  // Track the job that was just started for detailed UI feedback
+  useEffect(() => {
+    if (isWaitingForAutoJob && jobs.length > 0) {
+      // Find the most recently created job
+      const newestJob = jobs[0];
+      const createdAtStr = newestJob.created_at.endsWith("Z") ? newestJob.created_at : `${newestJob.created_at}Z`;
+      const isRecent = new Date().getTime() - new Date(createdAtStr).getTime() < 30000; // created within 30s
+      if (isRecent && (newestJob.status === "queued" || newestJob.status === "processing")) {
+         setTrackedJobId(newestJob.id);
+         setIsWaitingForAutoJob(false);
+      }
+    }
+  }, [jobs, isWaitingForAutoJob]);
+
+  // The active job is either the one we explicitly started tracking, or just the latest processing job if we lost track
+  const activeJob = trackedJobId 
+    ? jobs.find(j => j.id === trackedJobId) 
+    : (processingJobs.length > 0 ? processingJobs[0] : null);
 
   const ingestMutation = useMutation({
     mutationFn: async ({ youtubeUrl, ratio }: { youtubeUrl: string, ratio: string }) => {
@@ -68,8 +89,11 @@ export default function DashboardPage() {
       });
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setUrl("");
+      if (data.job_id) {
+        setTrackedJobId(data.job_id);
+      }
       refetch();
       toast.success("Project started successfully!");
     },
@@ -92,7 +116,12 @@ export default function DashboardPage() {
     },
     onSuccess: (data) => {
       setUrl("");
-      if (data.success) {
+      if (data.success && data.job_id) {
+        setTrackedJobId(data.job_id);
+        refetch();
+        toast.success(data.message || "Automation started!");
+      } else if (data.success) {
+        setIsWaitingForAutoJob(true);
         toast.success(data.message || "Automation started!");
       } else {
         toast.error(data.message || "Automation failed");
@@ -128,6 +157,7 @@ export default function DashboardPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      setTrackedJobId(null); // reset tracking
       ingestMutation.mutate({ youtubeUrl: url, ratio: aspectRatio });
     }
   };
@@ -135,8 +165,14 @@ export default function DashboardPage() {
   const handleAutomationSubmit = (e: React.MouseEvent) => {
     e.preventDefault();
     if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      setTrackedJobId(null); // reset tracking
       automationMutation.mutate({ youtubeUrl: url });
     }
+  };
+
+  // Allow user to dismiss the tracked job when it finishes or fails
+  const handleClearTrackedJob = () => {
+    setTrackedJobId(null);
   };
 
   if (isLoading || !isAuthenticated) return null;
@@ -149,7 +185,7 @@ export default function DashboardPage() {
         <DashboardHeader user={user} />
 
         <main className="flex-1 w-full max-w-[1400px] mx-auto pb-24">
-          <StatsGrid totalJobs={totalJobs} processingJobs={processingJobs} />
+          <StatsGrid totalJobs={totalJobs} processingJobs={processingJobs.length} />
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
             
@@ -162,8 +198,10 @@ export default function DashboardPage() {
                 setAspectRatio={setAspectRatio}
                 onSubmit={handleSubmit}
                 onAutomationSubmit={handleAutomationSubmit}
-                isPending={ingestMutation.isPending}
-                isAutomationPending={automationMutation.isPending}
+                isPending={ingestMutation.isPending || isWaitingForAutoJob}
+                isAutomationPending={automationMutation.isPending || isWaitingForAutoJob}
+                activeJob={activeJob}
+                onClearActiveJob={handleClearTrackedJob}
               />
             </div>
 

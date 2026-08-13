@@ -7,6 +7,13 @@ os.environ.setdefault("TF_ENABLE_ONEDNN_OPTS", "0")       # Suppress oneDNN warn
 os.environ.setdefault("GRPC_VERBOSITY", "ERROR")           # Suppress gRPC noise
 os.environ.setdefault("ABSL_MIN_LOG_LEVEL", "2")           # Suppress abseil INFO logs
 
+# Thread limiting for low-RAM systems (8GB) — MUST be set before torch import
+# Prevents PyTorch/MKL from spawning threads = CPU core count, which causes
+# memory thrashing when Demucs + Whisper compete for limited RAM.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("MKL_NUM_THREADS", "2")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
+
 import time
 import logging
 import threading
@@ -54,13 +61,13 @@ celery_app.conf.update(
 STEP_TIMEOUTS = {
     "download": 300,          # 5 minutes for YouTube download
     "preprocess": 300,        # 5 minutes for FFmpeg normalization + trim
-    "vocal_separation": 1800, # Increased to 30 minutes for CPU track separation
+    "vocal_separation": 3600, # 60 minutes for CPU track separation (htdemucs_ft is very slow on CPU)
     "loudness_normalization": 180,  # 3 minutes for FFmpeg loudnorm two-pass
     "melody_extraction": 600, # 10 minutes for Basic Pitch
     "piano_rendering": 300,   # 5 minutes for FluidSynth + FFmpeg
     "transcription": 2700,     # 45 minutes total for WhisperX on CPU (base model)
     "subtitle_generation": 60,# 1 minute for subtitle file generation
-    "video_rendering": 600,   # 10 minutes for FFmpeg video render
+    "video_rendering": 1200,  # 20 minutes for FFmpeg video render (increased for CPU-only machines)
 }
 
 
@@ -307,7 +314,7 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 start_progress=30,
                 end_progress=50,
                 interval_seconds=10,
-                total_expected_seconds=900  # Expected ~15 min on CPU
+                total_expected_seconds=2400  # Expected ~40 min on CPU for htdemucs_ft
             )
             
             def _run_track_separation(input_path):

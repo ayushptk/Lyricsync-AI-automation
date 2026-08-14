@@ -21,6 +21,7 @@ NEW_COLUMNS = [
     ("lrc_file_path", "VARCHAR"),
     ("ass_file_path", "VARCHAR"),
     ("final_video_path", "VARCHAR"),
+    ("thumbnail_path", "VARCHAR"),
 ]
 
 def migrate():

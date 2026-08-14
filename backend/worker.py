@@ -245,6 +245,54 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 job.project.title = youtube_title
                 db.commit()
                 
+            # --- Generate Thumbnail ---
+            try:
+                from PIL import Image, ImageDraw, ImageFont
+                bg_path = os.path.join(os.path.dirname(__file__), "assets", "karaoke_bg.png")
+                thumb_img = Image.open(bg_path).convert("RGB")
+                
+                # Resize the thumbnail to 1280x720
+                thumb_img = thumb_img.resize((1280, 720))
+                
+                draw = ImageDraw.Draw(thumb_img)
+                try:
+                    font = ImageFont.truetype("arial.ttf", 80)
+                except IOError:
+                    font = ImageFont.load_default()
+                
+                text_to_draw = f"{youtube_title} + karaoke version"
+                
+                W, H = thumb_img.size
+                
+                # Calculate text position and accurately center it
+                try:
+                    bbox = draw.textbbox((0, 0), text_to_draw, font=font)
+                    text_w = bbox[2] - bbox[0]
+                    text_h = bbox[3] - bbox[1]
+                    # Subtract bbox[0] and bbox[1] to offset the text box's internal margin
+                    x = (W - text_w) / 2 - bbox[0]
+                    y = (H - text_h) / 2 - bbox[1]
+                except AttributeError:
+                    text_w, text_h = draw.textsize(text_to_draw, font=font)
+                    x = (W - text_w) / 2
+                    y = (H - text_h) / 2
+                
+                outline_color = "black"
+                draw.text((x-2, y-2), text_to_draw, font=font, fill=outline_color)
+                draw.text((x+2, y-2), text_to_draw, font=font, fill=outline_color)
+                draw.text((x-2, y+2), text_to_draw, font=font, fill=outline_color)
+                draw.text((x+2, y+2), text_to_draw, font=font, fill=outline_color)
+                draw.text((x, y), text_to_draw, font=font, fill="white")
+                
+                thumb_path = os.path.join(os.path.dirname(metadata['file_path']), "thumbnail.jpg")
+                thumb_img.save(thumb_path)
+                
+                job.thumbnail_path = thumb_path
+                db.commit()
+            except Exception as e:
+                logger.warning(f"[{job_id}] Failed to generate thumbnail: {e}")
+            # ---------------------------
+
             _safe_update_job(db, job, progress=15,
                              log_msg=f"Download complete. Title: {youtube_title}")
         except StepTimeoutError as e:

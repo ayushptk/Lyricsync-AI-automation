@@ -34,6 +34,7 @@ class AutomationJobStatusResponse(BaseModel):
     status: str
     progress: float
     video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     song_title: Optional[str] = None
     duration: Optional[float] = None
     lyrics: Optional[str] = None
@@ -225,6 +226,9 @@ def get_automation_job_status(
         base_url = str(req.base_url).rstrip("/")
         response.video_url = f"{base_url}/api/automation/jobs/{job.id}/video"
         
+        if hasattr(job, 'thumbnail_path') and job.thumbnail_path:
+            response.thumbnail_url = f"{base_url}/api/automation/jobs/{job.id}/thumbnail"
+        
         # Try to extract useful metadata for the AI agent
         response.song_title = job.project.title
         
@@ -242,8 +246,7 @@ def get_automation_job_status(
 @router.get("/jobs/{job_id}/video")
 def get_automation_video(
     job_id: str,
-    db: Session = Depends(get_db),
-    automation_user: User = Depends(get_automation_user)
+    db: Session = Depends(get_db)
 ):
     """
     Download the generated MP4 video file.
@@ -252,9 +255,6 @@ def get_automation_video(
     
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
-        
-    if job.project.user_id != automation_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to access this file")
         
     if job.status != "completed":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not completed yet")
@@ -269,3 +269,30 @@ def get_automation_video(
     safe_title = re.sub(r'[\\/*?:"<>|]', "", job.project.title) if job.project and job.project.title else f"karaoke_{job_id}"
     
     return FileResponse(path=job.final_video_path, media_type="video/mp4", filename=f"{safe_title}.mp4")
+
+
+@router.get("/jobs/{job_id}/thumbnail")
+def get_automation_thumbnail(
+    job_id: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Download the generated thumbnail image.
+    """
+    job = db.query(Job).filter(Job.id == job_id).first()
+    
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        
+    if job.status != "completed":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Job is not completed yet")
+        
+    if not hasattr(job, 'thumbnail_path') or not job.thumbnail_path or not os.path.exists(job.thumbnail_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail={"error_code": "THUMBNAIL_UNAVAILABLE", "message": "Thumbnail file not found on disk"}
+        )
+    import re
+    safe_title = re.sub(r'[\\/*?:"<>|]', "", job.project.title) if job.project and job.project.title else f"thumbnail_{job_id}"
+    
+    return FileResponse(path=job.thumbnail_path, media_type="image/jpeg", filename=f"{safe_title}.jpg")

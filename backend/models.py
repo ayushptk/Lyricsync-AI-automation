@@ -125,6 +125,7 @@ class Job(Base):
     lrc_file_path = Column(String, nullable=True)
     ass_file_path = Column(String, nullable=True)
     final_video_path = Column(String, nullable=True)
+    thumbnail_path = Column(String, nullable=True)
 
     project = relationship("Project", back_populates="jobs")
     generated_video = relationship("GeneratedVideo", back_populates="job", uselist=False)

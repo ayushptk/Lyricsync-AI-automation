@@ -264,25 +264,68 @@ def ingest_youtube_audio_task(youtube_url: str, job_id: str):
                 
                 W, H = thumb_img.size
                 
-                # Calculate text position and accurately center it
-                try:
-                    bbox = draw.textbbox((0, 0), text_to_draw, font=font)
-                    text_w = bbox[2] - bbox[0]
-                    text_h = bbox[3] - bbox[1]
-                    # Subtract bbox[0] and bbox[1] to offset the text box's internal margin
-                    x = (W - text_w) / 2 - bbox[0]
-                    y = (H - text_h) / 2 - bbox[1]
-                except AttributeError:
-                    text_w, text_h = draw.textsize(text_to_draw, font=font)
-                    x = (W - text_w) / 2
-                    y = (H - text_h) / 2
+                # Wrap text to fit within image width with some margin
+                max_width = W - 100
+                lines = []
+                words = text_to_draw.split()
+                current_line = []
+                
+                for word in words:
+                    current_line.append(word)
+                    test_line = " ".join(current_line)
+                    try:
+                        bbox = draw.textbbox((0, 0), test_line, font=font)
+                        w = bbox[2] - bbox[0]
+                    except AttributeError:
+                        w, _ = draw.textsize(test_line, font=font)
+                    
+                    if w > max_width:
+                        if len(current_line) > 1:
+                            current_line.pop()
+                            lines.append(" ".join(current_line))
+                            current_line = [word]
+                        else:
+                            lines.append(" ".join(current_line))
+                            current_line = []
+                
+                if current_line:
+                    lines.append(" ".join(current_line))
+
+                # Calculate total height
+                line_spacing = 20
+                line_dimensions = []
+                total_text_h = 0
+                
+                for line in lines:
+                    try:
+                        bbox = draw.textbbox((0, 0), line, font=font)
+                        w = bbox[2] - bbox[0]
+                        h = bbox[3] - bbox[1]
+                        ox = bbox[0]
+                        oy = bbox[1]
+                    except AttributeError:
+                        w, h = draw.textsize(line, font=font)
+                        ox, oy = 0, 0
+                    line_dimensions.append((w, h, ox, oy))
+                    total_text_h += h
+                
+                total_text_h += line_spacing * (len(lines) - 1)
+                
+                current_y = (H - total_text_h) / 2
                 
                 outline_color = "black"
-                draw.text((x-2, y-2), text_to_draw, font=font, fill=outline_color)
-                draw.text((x+2, y-2), text_to_draw, font=font, fill=outline_color)
-                draw.text((x-2, y+2), text_to_draw, font=font, fill=outline_color)
-                draw.text((x+2, y+2), text_to_draw, font=font, fill=outline_color)
-                draw.text((x, y), text_to_draw, font=font, fill="white")
+                for i, line in enumerate(lines):
+                    w, h, ox, oy = line_dimensions[i]
+                    x = (W - w) / 2 - ox
+                    y = current_y - oy
+                    
+                    draw.text((x-2, y-2), line, font=font, fill=outline_color)
+                    draw.text((x+2, y-2), line, font=font, fill=outline_color)
+                    draw.text((x-2, y+2), line, font=font, fill=outline_color)
+                    draw.text((x+2, y+2), line, font=font, fill=outline_color)
+                    draw.text((x, y), line, font=font, fill="white")
+                    
+                    current_y += h + line_spacing
                 
                 thumb_path = os.path.join(os.path.dirname(metadata['file_path']), "thumbnail.jpg")
                 thumb_img.save(thumb_path)

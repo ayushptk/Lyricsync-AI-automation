@@ -647,22 +647,7 @@ Users
 
 ---
 
-# AWS Services Connected to Amazon ECS
 
-| AWS Service | Purpose |
-|-------------|---------|
-| Amazon ECR | Stores Docker images |
-| Amazon ECS | Runs Docker containers |
-| AWS Fargate | Provides serverless compute for containers |
-| IAM | Controls permissions for ECS tasks |
-| Amazon S3 | Stores generated media files |
-| Amazon RDS PostgreSQL | Stores application data |
-| ElastiCache Redis | Message broker for Celery |
-| CloudWatch | Monitoring and logging |
-| Application Load Balancer | Routes traffic to ECS services |
-| Secrets Manager | Stores database passwords, JWT secrets, and API keys |
-
----
 
 # Screenshots
 

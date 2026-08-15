@@ -167,22 +167,4 @@ The VPC improves the security of LyricSync AI by:
 - Restricting network communication
 - Preparing the infrastructure for Security Groups and Network ACLs
 
----
 
-# Future AWS Integration
-
-The following services will be deployed inside this VPC during later phases of the project.
-
-| AWS Service | Purpose |
-|-------------|---------|
-| Amazon ECS | Host FastAPI Backend |
-| Amazon ECS | Host Celery Workers |
-| Amazon RDS PostgreSQL | Application Database |
-| Amazon ElastiCache | Redis Queue |
-| Application Load Balancer | Receive HTTPS Requests |
-| CloudWatch | Monitoring |
-| Secrets Manager | Secure credentials |
-
----
-
-

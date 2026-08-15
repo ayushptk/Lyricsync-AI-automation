@@ -873,6 +873,4 @@ This separation is the foundation of the AWS production architecture.
 
 ---
 
-# 35. One-Sentence Definition
 
-**Amazon RDS PostgreSQL is the managed persistent relational database for LyricSync AI. ECS/FastAPI and workers use it to store users, jobs, processing states, metadata, and other structured application data, while S3 stores large media objects and Redis handles fast temporary/cache/queue-related workloads.**
